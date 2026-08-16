@@ -13,76 +13,73 @@
         
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            line-height: 1.6;
+            line-height: 1.8;
             color: #333;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
+            background: #f5f7fa;
         }
         
         .container {
-            max-width: 1200px;
+            max-width: 1400px;
             margin: 0 auto;
             padding: 20px;
         }
         
         header {
-            background: white;
-            padding: 40px 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 60px 40px;
             border-radius: 10px;
-            margin-bottom: 30px;
+            margin-bottom: 40px;
             box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             text-align: center;
         }
         
         header h1 {
-            color: #667eea;
-            font-size: 2.5em;
+            font-size: 3em;
             margin-bottom: 10px;
         }
         
         header p {
-            color: #666;
-            font-size: 1.1em;
+            font-size: 1.2em;
+            opacity: 0.95;
         }
         
-        nav {
+        .tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 30px;
+            flex-wrap: wrap;
             background: white;
             padding: 20px;
             border-radius: 10px;
-            margin-bottom: 30px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            display: flex;
-            gap: 20px;
-            flex-wrap: wrap;
-            justify-content: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
-        nav button {
-            padding: 10px 20px;
-            border: none;
-            background: #667eea;
-            color: white;
+        .tab-btn {
+            padding: 12px 24px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
             border-radius: 5px;
             cursor: pointer;
             font-size: 1em;
+            font-weight: 600;
             transition: all 0.3s;
         }
         
-        nav button:hover {
-            background: #764ba2;
+        .tab-btn:hover {
+            background: #667eea;
+            color: white;
             transform: translateY(-2px);
         }
         
-        nav button.active {
-            background: #764ba2;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
+        .tab-btn.active {
+            background: #667eea;
+            color: white;
+            box-shadow: 0 5px 15px rgba(102, 126, 234, 0.4);
         }
         
         .content {
-            background: white;
-            padding: 40px;
-            border-radius: 10px;
-            box-shadow: 0 10px 30px rgba(0,0,0,0.2);
             display: none;
         }
         
@@ -90,99 +87,139 @@
             display: block;
         }
         
-        .content h2 {
-            color: #667eea;
-            margin-bottom: 20px;
-            font-size: 2em;
+        .section {
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
         
-        .content h3 {
+        .section h2 {
+            color: #667eea;
+            font-size: 2.2em;
+            margin-bottom: 30px;
+            border-bottom: 3px solid #667eea;
+            padding-bottom: 15px;
+        }
+        
+        .section h3 {
             color: #764ba2;
-            margin-top: 30px;
-            margin-bottom: 15px;
-            font-size: 1.5em;
+            font-size: 1.6em;
+            margin-top: 40px;
+            margin-bottom: 20px;
         }
         
-        .content h4 {
-            color: #667eea;
-            margin-top: 20px;
-            margin-bottom: 10px;
+        .function-card {
+            background: #f9f9f9;
+            border-left: 5px solid #667eea;
+            padding: 25px;
+            margin: 25px 0;
+            border-radius: 8px;
+            transition: all 0.3s;
         }
         
-        .code-block {
-            background: #f5f5f5;
-            border-left: 4px solid #667eea;
+        .function-card:hover {
+            box-shadow: 0 5px 20px rgba(102, 126, 234, 0.2);
+            transform: translateX(5px);
+        }
+        
+        .fn-signature {
+            background: #2d3748;
+            color: #68d391;
             padding: 15px;
-            margin: 15px 0;
             border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 0.95em;
+            margin: 15px 0;
             overflow-x: auto;
             white-space: pre-wrap;
             word-wrap: break-word;
+            line-height: 1.6;
         }
         
-        .code-block code {
-            font-family: 'Courier New', monospace;
-            font-size: 0.9em;
-            display: block;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            line-height: 1.5;
-        }
-        
-        .feature-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
-            gap: 20px;
-            margin: 20px 0;
-        }
-        
-        .feature-card {
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
-        }
-        
-        .feature-card h4 {
+        .fn-title {
+            font-weight: bold;
             color: #667eea;
+            font-size: 1.2em;
             margin-bottom: 10px;
         }
         
-        .function-doc {
-            background: #f9f9f9;
-            padding: 20px;
-            margin: 20px 0;
-            border-radius: 8px;
-            border-left: 4px solid #667eea;
+        .fn-description {
+            color: #555;
+            margin: 15px 0;
+            line-height: 1.8;
         }
         
-        .function-doc .fn-name {
-            font-weight: bold;
+        .fn-params {
+            background: #f0f4ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin: 15px 0;
+            border-left: 3px solid #667eea;
+        }
+        
+        .fn-params strong {
             color: #667eea;
-            font-family: 'Courier New', monospace;
         }
         
-        .function-doc .fn-desc {
-            margin: 10px 0;
-            color: #666;
-        }
-        
-        .function-doc .fn-params {
-            background: white;
-            padding: 10px;
-            margin: 10px 0;
+        .fn-example {
+            background: #f0f4ff;
+            padding: 15px;
             border-radius: 5px;
+            margin: 15px 0;
+            border-left: 3px solid #764ba2;
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.6;
         }
         
-        .function-doc .fn-example {
-            background: white;
-            padding: 10px;
-            margin: 10px 0;
+        .fn-example strong {
+            color: #764ba2;
+        }
+        
+        .code-block {
+            background: #2d3748;
+            color: #68d391;
+            padding: 20px;
             border-radius: 5px;
+            margin: 20px 0;
+            overflow-x: auto;
             font-family: 'Courier New', monospace;
             font-size: 0.9em;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            line-height: 1.6;
+        }
+        
+        .language-tabs {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .lang-btn {
+            padding: 8px 16px;
+            border: 2px solid #667eea;
+            background: white;
+            color: #667eea;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: all 0.3s;
+        }
+        
+        .lang-btn.active {
+            background: #667eea;
+            color: white;
+        }
+        
+        .lang-btn:hover {
+            background: #667eea;
+            color: white;
         }
         
         table {
@@ -194,12 +231,13 @@
         table th {
             background: #667eea;
             color: white;
-            padding: 12px;
+            padding: 15px;
             text-align: left;
+            font-weight: 600;
         }
         
         table td {
-            padding: 12px;
+            padding: 12px 15px;
             border-bottom: 1px solid #ddd;
         }
         
@@ -207,55 +245,50 @@
             background: #f5f5f5;
         }
         
-        .highlight {
-            background: #fff3cd;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            border-left: 4px solid #ffc107;
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+            gap: 20px;
+            margin: 30px 0;
         }
         
-        .success {
-            background: #d4edda;
-            padding: 15px;
-            border-radius: 5px;
-            margin: 20px 0;
-            border-left: 4px solid #28a745;
-            color: #155724;
+        .feature-card {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 5px 15px rgba(0,0,0,0.1);
+        }
+        
+        .feature-card h4 {
+            font-size: 1.3em;
+            margin-bottom: 10px;
         }
         
         footer {
             text-align: center;
-            color: white;
-            margin-top: 40px;
+            color: #666;
+            margin-top: 60px;
+            padding: 30px;
+            border-top: 2px solid #ddd;
+        }
+        
+        .success-box {
+            background: #d4edda;
+            border-left: 5px solid #28a745;
             padding: 20px;
-        }
-        
-        .language-selector {
-            display: flex;
-            gap: 10px;
-            margin: 20px 0;
-            flex-wrap: wrap;
-        }
-        
-        .language-selector button {
-            padding: 8px 16px;
-            border: 2px solid #667eea;
-            background: white;
-            color: #667eea;
             border-radius: 5px;
-            cursor: pointer;
-            transition: all 0.3s;
+            margin: 20px 0;
+            color: #155724;
         }
         
-        .language-selector button.active {
-            background: #667eea;
-            color: white;
-        }
-        
-        .language-selector button:hover {
-            background: #667eea;
-            color: white;
+        .info-box {
+            background: #d1ecf1;
+            border-left: 5px solid #17a2b8;
+            padding: 20px;
+            border-radius: 5px;
+            margin: 20px 0;
+            color: #0c5460;
         }
     </style>
 </head>
@@ -266,688 +299,743 @@
             <p>The Redis Alternative with Distributed CRDTs, Intelligent Search, Knowledge Graphs, and Agentic Capabilities</p>
         </header>
         
-        <nav>
-            <button class="nav-btn active" onclick="showSection('overview')">Overview</button>
-            <button class="nav-btn" onclick="showSection('quickstart')">Quick Start</button>
-            <button class="nav-btn" onclick="showSection('phase1')">Phase 1: Gossip</button>
-            <button class="nav-btn" onclick="showSection('phase2')">Phase 2: HTTP API</button>
-            <button class="nav-btn" onclick="showSection('phase3')">Phase 3: Persistence</button>
-            <button class="nav-btn" onclick="showSection('phase4')">Phase 4: Advanced</button>
-            <button class="nav-btn" onclick="showSection('api')">Complete API</button>
-            <button class="nav-btn" onclick="showSection('examples')">Examples</button>
-        </nav>
+        <div class="tabs">
+            <button class="tab-btn active" onclick="switchTab('overview')">Overview</button>
+            <button class="tab-btn" onclick="switchTab('core-ops')">Core Operations</button>
+            <button class="tab-btn" onclick="switchTab('coordination')">Coordination</button>
+            <button class="tab-btn" onclick="switchTab('persistence')">Persistence</button>
+            <button class="tab-btn" onclick="switchTab('advanced')">Advanced</button>
+            <button class="tab-btn" onclick="switchTab('health')">Health Checks</button>
+            <button class="tab-btn" onclick="switchTab('examples')">Examples</button>
+        </div>
         
-        <!-- Overview Section -->
+        <!-- Overview Tab -->
         <div id="overview" class="content active">
-            <h2>Welcome to TollMeshStore</h2>
-            <p>TollMeshStore is a world-class distributed cache system that rivals Redis while offering superior features for modern use cases.</p>
-            
-            <h3>Why TollMeshStore?</h3>
-            <table>
-                <tr>
-                    <th>Feature</th>
-                    <th>Redis</th>
-                    <th>TollMeshStore</th>
-                </tr>
-                <tr>
-                    <td>Distributed by Default</td>
-                    <td>❌ Requires Cluster</td>
-                    <td>✅ Built-in CRDTs</td>
-                </tr>
-                <tr>
-                    <td>Local Performance</td>
-                    <td>Standard</td>
-                    <td>✅ 100x faster</td>
-                </tr>
-                <tr>
-                    <td>Infrastructure Cost</td>
-                    <td>$$ Server needed</td>
-                    <td>✅ $0</td>
-                </tr>
-                <tr>
-                    <td>Intelligent Search</td>
-                    <td>❌ No</td>
-                    <td>✅ BM25 + Vectors</td>
-                </tr>
-                <tr>
-                    <td>Knowledge Graphs</td>
-                    <td>❌ No</td>
-                    <td>✅ Multi-hop reasoning</td>
-                </tr>
-                <tr>
-                    <td>Persistence</td>
-                    <td>✅ Yes</td>
-                    <td>✅ WAL + Snapshots</td>
-                </tr>
-            </table>
-            
-            <h3>Key Features</h3>
-            <div class="feature-grid">
-                <div class="feature-card">
-                    <h4>🔄 Phase 1: Gossip Protocol</h4>
-                    <p>Peer-to-peer state synchronization with Merkle trees and failure detection</p>
+            <div class="section">
+                <h2>Welcome to TollMeshStore</h2>
+                <p>TollMeshStore is a world-class distributed cache system that rivals Redis while offering superior features for modern use cases. All 4 phases are fully implemented and production-ready.</p>
+                
+                <h3>Why TollMeshStore?</h3>
+                <table>
+                    <tr>
+                        <th>Feature</th>
+                        <th>Redis</th>
+                        <th>TollMeshStore</th>
+                    </tr>
+                    <tr>
+                        <td>Distributed by Default</td>
+                        <td>❌ Requires Cluster</td>
+                        <td>✅ Built-in CRDTs</td>
+                    </tr>
+                    <tr>
+                        <td>Local Performance</td>
+                        <td>Standard</td>
+                        <td>✅ 100x faster</td>
+                    </tr>
+                    <tr>
+                        <td>Infrastructure Cost</td>
+                        <td>$$ Server needed</td>
+                        <td>✅ $0</td>
+                    </tr>
+                    <tr>
+                        <td>Persistence</td>
+                        <td>✅ Yes</td>
+                        <td>✅ WAL + Snapshots</td>
+                    </tr>
+                </table>
+                
+                <h3>All 4 Phases Implemented</h3>
+                <div class="feature-grid">
+                    <div class="feature-card">
+                        <h4>🔄 Phase 1: Gossip Protocol</h4>
+                        <p>Peer-to-peer state synchronization with Merkle trees and failure detection</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🌐 Phase 2: HTTP API</h4>
+                        <p>REST endpoints with rate limiting, replay protection, and health checks</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>💾 Phase 3: Persistence</h4>
+                        <p>Write-Ahead Log, snapshots, and crash recovery</p>
+                    </div>
+                    <div class="feature-card">
+                        <h4>🚀 Phase 4: Advanced</h4>
+                        <p>Sharding, replication, and load balancing</p>
+                    </div>
                 </div>
-                <div class="feature-card">
-                    <h4>🌐 Phase 2: HTTP API</h4>
-                    <p>REST endpoints with rate limiting, replay protection, and health checks</p>
-                </div>
-                <div class="feature-card">
-                    <h4>💾 Phase 3: Persistence</h4>
-                    <p>Write-Ahead Log, snapshots, and crash recovery</p>
-                </div>
-                <div class="feature-card">
-                    <h4>🚀 Phase 4: Advanced</h4>
-                    <p>Sharding, replication, and load balancing</p>
-                </div>
-            </div>
-            
-            <div class="success">
-                <strong>✅ Production Ready:</strong> All 4 phases fully implemented, tested, and deployed
-            </div>
-        </div>
-        
-        <!-- Quick Start Section -->
-        <div id="quickstart" class="content">
-            <h2>Quick Start Guide</h2>
-            
-            <h3>Installation</h3>
-            <div class="language-selector">
-                <button class="active" onclick="switchLanguage('go')">Go</button>
-                <button onclick="switchLanguage('python')">Python</button>
-                <button onclick="switchLanguage('nodejs')">Node.js</button>
-                <button onclick="switchLanguage('rust')">Rust</button>
-            </div>
-            
-            <div id="go-install" class="code-block">
-                <code>go get github.com/TollMesh/toll-mesh-store</code>
-            </div>
-            <div id="python-install" class="code-block" style="display:none;">
-                <code>pip install tollmesh-client</code>
-            </div>
-            <div id="nodejs-install" class="code-block" style="display:none;">
-                <code>npm install @toll-mesh/client</code>
-            </div>
-            <div id="rust-install" class="code-block" style="display:none;">
-                <code>cargo add toll-mesh-store</code>
-            </div>
-            
-            <h3>Basic Example</h3>
-            <div id="go-example" class="code-block">
-                <code>package main
-
-import (
-    "context"
-    "log"
-    "time"
-    "github.com/TollMesh/toll-mesh-store/store"
-)
-
-func main() {
-    meshStore, err := store.NewMeshStore(&store.Config{
-        NodeName: "node1",
-        BindAddr: "127.0.0.1",
-        BindPort: 8000,
-    })
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer meshStore.Close()
-    
-    // Rate limiting
-    result, err := meshStore.Consume(context.Background(), "user:123", 100, 60*time.Second)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    log.Printf("Rate limit OK: %v, Remaining: %d", result.OK, result.Remaining)
-}</code>
-            </div>
-            <div id="python-example" class="code-block" style="display:none;">
-                <code>import requests
-
-# Rate limiting
-response = requests.post('http://localhost:8080/consume', json={
-    'key': 'user:123',
-    'limit': 100,
-    'window': 60000
-})
-
-data = response.json()
-if data['ok']:
-    print(f"Allowed. Remaining: {data['remaining']}")
-else:
-    print(f"Rate limited. Reset at: {data['reset_at']}")</code>
-            </div>
-            <div id="nodejs-example" class="code-block" style="display:none;">
-                <code>const TollMesh = require('@toll-mesh/client');
-
-const client = new TollMesh.Client({
-    host: 'localhost',
-    port: 8080
-});
-
-// Rate limiting
-client.consume('user:123', 100, 60000)
-    .then(result => {
-        console.log(`Allowed: ${result.ok}, Remaining: ${result.remaining}`);
-    })
-    .catch(err => console.error(err));</code>
-            </div>
-            <div id="rust-example" class="code-block" style="display:none;">
-                <code>use toll_mesh_store::Client;
-
-#[tokio::main]
-async fn main() {
-    let client = Client::new("localhost:8080").await.unwrap();
-    
-    // Rate limiting
-    match client.consume("user:123", 100, 60000).await {
-        Ok(result) => {
-            println!("Allowed: {}, Remaining: {}", result.ok, result.remaining);
-        }
-        Err(e) => eprintln!("Error: {}", e),
-    }
-}</code>
-            </div>
-        </div>
-        
-        <!-- Phase 1 Section -->
-        <div id="phase1" class="content">
-            <h2>Phase 1: Gossip Protocol</h2>
-            <p>Distributed peer-to-peer state synchronization with automatic failure detection and recovery.</p>
-            
-            <h3>Core Functions</h3>
-            
-            <div class="function-doc">
-                <div class="fn-name">PeerManager.AddPeer(peer *Peer) error</div>
-                <div class="fn-desc">Add a new peer to the cluster</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    peer: Peer object with ID, Address, Port<br>
-                    <strong>Returns:</strong> error if peer already exists
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    pm.AddPeer(&Peer{ID: "node2", Address: "192.168.1.2", Port: 8000})
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">PeerManager.RemovePeer(peerID string) error</div>
-                <div class="fn-desc">Remove a peer from the cluster</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    peerID: ID of the peer to remove<br>
-                    <strong>Returns:</strong> error if peer not found
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    pm.RemovePeer("node2")
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">StateSync.SyncState(state *MeshStoreState) error</div>
-                <div class="fn-desc">Synchronize state with other peers using Merkle trees</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    state: Current state to sync<br>
-                    <strong>Returns:</strong> error if sync fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    ss.SyncState(currentState)
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">FailureDetector.MarkSuspect(peerID string) error</div>
-                <div class="fn-desc">Mark a peer as suspected failed</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    peerID: ID of the peer<br>
-                    <strong>Returns:</strong> error if peer not found
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    fd.MarkSuspect("node2")
+                
+                <div class="success-box">
+                    <strong>✅ Production Ready:</strong> All 4 phases fully implemented, tested, and deployed
                 </div>
             </div>
         </div>
         
-        <!-- Phase 2 Section -->
-        <div id="phase2" class="content">
-            <h2>Phase 2: HTTP API</h2>
-            <p>REST API endpoints for rate limiting, replay protection, caching, and health checks.</p>
-            
-            <h3>Core Functions</h3>
-            
-            <div class="function-doc">
-                <div class="fn-name">POST /consume</div>
-                <div class="fn-desc">Rate limit check - consume tokens from a bucket</div>
-                <div class="fn-params">
-                    <strong>Request Body:</strong><br>
-                    { "key": "user:123", "limit": 100, "window": 60000 }<br>
-                    <strong>Response:</strong> { "ok": true, "remaining": 99, "reset_at": 1234567890 }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl -X POST http://localhost:8080/consume -d '{"key":"user:123","limit":100,"window":60000}'
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">POST /seen</div>
-                <div class="fn-desc">Replay protection - check if nonce was seen before</div>
-                <div class="fn-params">
-                    <strong>Request Body:</strong><br>
-                    { "key": "request:123", "nonce": "abc123" }<br>
-                    <strong>Response:</strong> { "seen": false, "stored": true }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl -X POST http://localhost:8080/seen -d '{"key":"request:123","nonce":"abc123"}'
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">GET /get/:key</div>
-                <div class="fn-desc">Get cached value</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    key: Cache key<br>
-                    <strong>Response:</strong> { "value": "cached_value", "ttl": 3600 }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl http://localhost:8080/get/mykey
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">POST /set</div>
-                <div class="fn-desc">Set cached value with TTL</div>
-                <div class="fn-params">
-                    <strong>Request Body:</strong><br>
-                    { "key": "mykey", "value": "myvalue", "ttl": 3600 }<br>
-                    <strong>Response:</strong> { "ok": true }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl -X POST http://localhost:8080/set -d '{"key":"mykey","value":"myvalue","ttl":3600}'
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">GET /health/live</div>
-                <div class="fn-desc">Liveness probe - is the service running?</div>
-                <div class="fn-params">
-                    <strong>Response:</strong> { "status": "alive" }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl http://localhost:8080/health/live
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">GET /health/ready</div>
-                <div class="fn-desc">Readiness probe - is the service ready to serve?</div>
-                <div class="fn-params">
-                    <strong>Response:</strong> { "status": "ready", "components": {...} }
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    curl http://localhost:8080/health/ready
-                </div>
-            </div>
-        </div>
-        
-        <!-- Phase 3 Section -->
-        <div id="phase3" class="content">
-            <h2>Phase 3: Persistence</h2>
-            <p>Durable storage with Write-Ahead Log, snapshots, and crash recovery.</p>
-            
-            <h3>Core Functions</h3>
-            
-            <div class="function-doc">
-                <div class="fn-name">WriteAheadLog.Write(entry *Entry) error</div>
-                <div class="fn-desc">Write an entry to the WAL</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    entry: Entry with operation data<br>
-                    <strong>Returns:</strong> error if write fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    wal.Write(&Entry{Op: "SET", Key: "k1", Value: "v1"})
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">WriteAheadLog.Read(fromTimestamp int64) ([]*Entry, error)</div>
-                <div class="fn-desc">Read entries from WAL starting from timestamp</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    fromTimestamp: Start reading from this timestamp<br>
-                    <strong>Returns:</strong> slice of entries and error
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    entries, err := wal.Read(time.Now().UnixMilli() - 3600000)
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">SnapshotManager.CreateSnapshot(snapshot *Snapshot) error</div>
-                <div class="fn-desc">Create a point-in-time snapshot</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    snapshot: Snapshot data<br>
-                    <strong>Returns:</strong> error if creation fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    sm.CreateSnapshot(&Snapshot{RateLimiters: data})
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">SnapshotManager.GetLatestSnapshot() (*Snapshot, error)</div>
-                <div class="fn-desc">Get the most recent snapshot</div>
-                <div class="fn-params">
-                    <strong>Returns:</strong> Latest snapshot and error
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    snapshot, err := sm.GetLatestSnapshot()
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">RecoveryManager.RecoverFromCrash() error</div>
-                <div class="fn-desc">Recover from crash using snapshots or WAL replay</div>
-                <div class="fn-params">
-                    <strong>Returns:</strong> error if recovery fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    err := rm.RecoverFromCrash()
-                </div>
-            </div>
-        </div>
-        
-        <!-- Phase 4 Section -->
-        <div id="phase4" class="content">
-            <h2>Phase 4: Advanced Features</h2>
-            <p>Sharding, replication, and load balancing for horizontal scaling.</p>
-            
-            <h3>Core Functions</h3>
-            
-            <div class="function-doc">
-                <div class="fn-name">Ring.AddNode(node *Node) error</div>
-                <div class="fn-desc">Add a node to the consistent hash ring</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    node: Node to add<br>
-                    <strong>Returns:</strong> error if add fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    ring.AddNode(&Node{ID: "node1", Address: "localhost", Port: 8000})
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">Ring.GetNode(key string) (*Node, error)</div>
-                <div class="fn-desc">Get the node responsible for a key</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    key: Cache key<br>
-                    <strong>Returns:</strong> Responsible node and error
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    node, err := ring.GetNode("user:123")
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">ReplicationManager.ReplicateKey(key string, value interface{}) error</div>
-                <div class="fn-desc">Replicate a key to multiple nodes</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    key: Key to replicate<br>
-                    value: Value to replicate<br>
-                    <strong>Returns:</strong> error if replication fails
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    rm.ReplicateKey("user:123", userData)
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">LoadBalancer.SelectNode() (*Node, error)</div>
-                <div class="fn-desc">Select a node based on load balancing strategy</div>
-                <div class="fn-params">
-                    <strong>Returns:</strong> Selected node and error
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    node, err := lb.SelectNode()
-                </div>
-            </div>
-            
-            <div class="function-doc">
-                <div class="fn-name">LoadBalancer.MarkNodeHealthy(nodeID string) error</div>
-                <div class="fn-desc">Mark a node as healthy</div>
-                <div class="fn-params">
-                    <strong>Parameters:</strong><br>
-                    nodeID: ID of the node<br>
-                    <strong>Returns:</strong> error if node not found
-                </div>
-                <div class="fn-example">
-                    <strong>Example:</strong><br>
-                    lb.MarkNodeHealthy("node1")
-                </div>
-            </div>
-        </div>
-        
-        <!-- Complete API Section -->
-        <div id="api" class="content">
-            <h2>Complete API Reference</h2>
-            
-            <h3>HTTP Endpoints</h3>
-            <table>
-                <tr>
-                    <th>Method</th>
-                    <th>Endpoint</th>
-                    <th>Description</th>
-                </tr>
-                <tr>
-                    <td>POST</td>
-                    <td>/consume</td>
-                    <td>Rate limit check</td>
-                </tr>
-                <tr>
-                    <td>POST</td>
-                    <td>/seen</td>
-                    <td>Replay protection</td>
-                </tr>
-                <tr>
-                    <td>GET</td>
-                    <td>/get/:key</td>
-                    <td>Get cached value</td>
-                </tr>
-                <tr>
-                    <td>POST</td>
-                    <td>/set</td>
-                    <td>Set cached value</td>
-                </tr>
-                <tr>
-                    <td>DELETE</td>
-                    <td>/delete/:key</td>
-                    <td>Delete cached value</td>
-                </tr>
-                <tr>
-                    <td>GET</td>
-                    <td>/health/live</td>
-                    <td>Liveness probe</td>
-                </tr>
-                <tr>
-                    <td>GET</td>
-                    <td>/health/ready</td>
-                    <td>Readiness probe</td>
-                </tr>
-                <tr>
-                    <td>GET</td>
-                    <td>/metrics</td>
-                    <td>Prometheus metrics</td>
-                </tr>
-            </table>
-            
-            <h3>Configuration Options</h3>
-            <div class="code-block">
-                <code>server:
-  node_name: node1
-  bind_addr: 0.0.0.0
-  bind_port: 8000
-  http_port: 8080
-
-persistence:
-  wal_path: /var/lib/toll/wal
-  snapshot_path: /var/lib/toll/snapshots
-  wal_max_size: 104857600  # 100MB
-  snapshot_interval: 3600  # 1 hour
-
-coordination:
-  gossip_interval: 1000  # 1 second
-  failure_threshold: 3
-  replication_factor: 3
-
-load_balancing:
-  strategy: health-aware
-  health_check_interval: 5000  # 5 seconds</code>
-            </div>
-        </div>
-        
-        <!-- Examples Section -->
-        <div id="examples" class="content">
-            <h2>Real-World Examples</h2>
-            
-            <h3>Example 1: API Rate Limiting</h3>
-            <div class="code-block">
-                <code>// Check if user exceeded rate limit
-result, err := meshStore.Consume(ctx, "api:user:123", 1000, 3600*time.Second)
+        <!-- Core Operations Tab -->
+        <div id="core-ops" class="content">
+            <div class="section">
+                <h2>Core Operations</h2>
+                <p>Essential functions for rate limiting, replay protection, and caching.</p>
+                
+                <h3>Consume - Rate Limiting</h3>
+                <div class="function-card">
+                    <div class="fn-title">meshStore.Consume(ctx, key, limit, window)</div>
+                    <div class="fn-description">
+                        Check if a request is within rate limits. Consumes tokens from a bucket and returns whether the request is allowed.
+                        Perfect for API rate limiting, preventing abuse, and protecting services from overload.
+                        Returns remaining tokens and reset time for client-side handling.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • ctx: Context for cancellation<br>
+                        • key: Unique identifier (e.g., "user:123", "api:endpoint")<br>
+                        • limit: Maximum requests allowed<br>
+                        • window: Time window (e.g., 60*time.Second for 1 minute)<br>
+                        <strong>Returns:</strong> {ok: bool, remaining: int, resetAt: int64}
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+result, err := meshStore.Consume(ctx, "api:user:123", 100, 60*time.Second)
 if err != nil {
     return err
 }
-
 if !result.OK {
-    return fmt.Errorf("rate limit exceeded, reset at %d", result.ResetAt)
+    return fmt.Errorf("rate limited, reset at %d", result.ResetAt)
 }
-
 // Process request
-processRequest()</code>
-            </div>
-            
-            <h3>Example 2: Replay Attack Prevention</h3>
-            <div class="code-block">
-                <code>// Check if request nonce was seen before
+                    </div>
+                </div>
+                
+                <h3>Seen - Replay Protection</h3>
+                <div class="function-card">
+                    <div class="fn-title">meshStore.Seen(ctx, key, nonce)</div>
+                    <div class="fn-description">
+                        Detect and prevent replay attacks by tracking seen nonces. Checks if a request nonce was previously seen.
+                        Essential for security in distributed systems to prevent duplicate request processing.
+                        Automatically stores the nonce for future comparisons.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • ctx: Context for cancellation<br>
+                        • key: Request identifier (e.g., "request:123")<br>
+                        • nonce: Unique request identifier<br>
+                        <strong>Returns:</strong> {seen: bool, stored: bool}
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
 result, err := meshStore.Seen(ctx, "request:nonce", requestNonce)
 if err != nil {
     return err
 }
-
 if result.Seen {
     return fmt.Errorf("replay attack detected")
 }
-
 // Process request
-processRequest()</code>
-            </div>
-            
-            <h3>Example 3: Distributed Caching</h3>
-            <div class="code-block">
-                <code>// Try to get from cache
-cached, err := meshStore.Get(ctx, "user:profile:123")
-if err == nil && cached != nil {
-    return cached
+                    </div>
+                </div>
+                
+                <h3>Get - Retrieve Cached Value</h3>
+                <div class="function-card">
+                    <div class="fn-title">meshStore.Get(ctx, key)</div>
+                    <div class="fn-description">
+                        Retrieve a cached value by key. Returns the value if it exists and hasn't expired.
+                        Fast O(1) operation perfect for caching frequently accessed data.
+                        Returns nil if key doesn't exist or has expired.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • ctx: Context for cancellation<br>
+                        • key: Cache key to retrieve<br>
+                        <strong>Returns:</strong> {value: interface{}, ttl: int64, error}
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+value, ttl, err := meshStore.Get(ctx, "user:profile:123")
+if err != nil {
+    return err
 }
-
+if value != nil {
+    return value // Cache hit
+}
 // Cache miss, fetch from database
+                    </div>
+                </div>
+                
+                <h3>Set - Store Cached Value</h3>
+                <div class="function-card">
+                    <div class="fn-title">meshStore.Set(ctx, key, value, ttl)</div>
+                    <div class="fn-description">
+                        Store a value in cache with optional TTL (Time To Live). Automatically expires after TTL.
+                        Perfect for caching database results, API responses, and computed values.
+                        Supports any serializable value type.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • ctx: Context for cancellation<br>
+                        • key: Cache key<br>
+                        • value: Value to cache<br>
+                        • ttl: Time to live (0 = no expiration)<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
 profile := fetchFromDatabase("user:123")
-
-// Store in cache with 1 hour TTL
-meshStore.Set(ctx, "user:profile:123", profile, 3600*time.Second)
-
-return profile</code>
+err := meshStore.Set(ctx, "user:profile:123", profile, 3600*time.Second)
+if err != nil {
+    return err
+}
+// Value cached for 1 hour
+                    </div>
+                </div>
+                
+                <h3>Delete - Remove Cached Value</h3>
+                <div class="function-card">
+                    <div class="fn-title">meshStore.Delete(ctx, key)</div>
+                    <div class="fn-description">
+                        Remove a value from cache immediately. Useful for cache invalidation when data changes.
+                        Fast O(1) operation that removes the key and all associated data.
+                        Safe to call even if key doesn't exist.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • ctx: Context for cancellation<br>
+                        • key: Cache key to delete<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := meshStore.Delete(ctx, "user:profile:123")
+if err != nil {
+    return err
+}
+// Value removed from cache
+                    </div>
+                </div>
             </div>
-            
-            <h3>Example 4: Cluster Setup</h3>
-            <div class="code-block">
-                <code>// Create cluster with 3 nodes
-nodes := []*Node{
-    {ID: "node1", Address: "192.168.1.1", Port: 8000},
-    {ID: "node2", Address: "192.168.1.2", Port: 8000},
-    {ID: "node3", Address: "192.168.1.3", Port: 8000},
-}
-
-// Add nodes to ring
-ring := NewRing(ShardingConfig{
-    VirtualNodes: 150,
-    ReplicationFactor: 3,
+        </div>
+        
+        <!-- Coordination Tab -->
+        <div id="coordination" class="content">
+            <div class="section">
+                <h2>Coordination Functions</h2>
+                <p>Manage distributed cluster coordination, peer discovery, and state synchronization.</p>
+                
+                <h3>Peer Management</h3>
+                <div class="function-card">
+                    <div class="fn-title">peerManager.AddPeer(peer)</div>
+                    <div class="fn-description">
+                        Add a new peer to the cluster for distributed coordination. Enables peer-to-peer communication.
+                        Automatically starts health monitoring and state synchronization with the new peer.
+                        Returns error if peer already exists.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • peer.ID: Unique peer identifier<br>
+                        • peer.Address: IP address or hostname<br>
+                        • peer.Port: Port number<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := peerManager.AddPeer(&Peer{
+    ID: "node2",
+    Address: "192.168.1.2",
+    Port: 8000,
 })
-
-for _, node := range nodes {
-    ring.AddNode(node)
+if err != nil {
+    return err
 }
-
-// Get responsible node for key
-node, err := ring.GetNode("user:123")</code>
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">peerManager.RemovePeer(peerID)</div>
+                    <div class="fn-description">
+                        Remove a peer from the cluster. Stops communication and monitoring with that peer.
+                        Useful when decommissioning nodes or handling node failures.
+                        Automatically redistributes data to remaining peers.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • peerID: ID of the peer to remove<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := peerManager.RemovePeer("node2")
+if err != nil {
+    return err
+}
+// Peer removed from cluster
+                    </div>
+                </div>
+                
+                <h3>State Synchronization</h3>
+                <div class="function-card">
+                    <div class="fn-title">stateSync.SyncState(state)</div>
+                    <div class="fn-description">
+                        Synchronize state with other peers using Merkle trees for efficiency. Detects differences.
+                        Only transfers changed data, minimizing network overhead.
+                        Ensures eventual consistency across all nodes.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • state: Current MeshStoreState to sync<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := stateSync.SyncState(currentState)
+if err != nil {
+    return err
+}
+// State synchronized with peers
+                    </div>
+                </div>
+                
+                <h3>Failure Detection</h3>
+                <div class="function-card">
+                    <div class="fn-title">failureDetector.MarkSuspect(peerID)</div>
+                    <div class="fn-description">
+                        Mark a peer as suspected failed for monitoring. Uses suspicion-based detection.
+                        Automatically attempts recovery and notifies other peers.
+                        Prevents false positives from temporary network issues.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • peerID: ID of the peer to mark<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := failureDetector.MarkSuspect("node2")
+if err != nil {
+    return err
+}
+// Peer marked for monitoring
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Persistence Tab -->
+        <div id="persistence" class="content">
+            <div class="section">
+                <h2>Persistence Functions</h2>
+                <p>Manage durable storage with Write-Ahead Log, snapshots, and crash recovery.</p>
+                
+                <h3>Write-Ahead Log (WAL)</h3>
+                <div class="function-card">
+                    <div class="fn-title">wal.Write(entry)</div>
+                    <div class="fn-description">
+                        Write an operation entry to the Write-Ahead Log for durability. Ensures no data loss.
+                        Entries are persisted before being applied to the state.
+                        Supports automatic segment rotation for efficient storage.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • entry.Op: Operation type (SET, DELETE, etc.)<br>
+                        • entry.Key: Data key<br>
+                        • entry.Value: Data value<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := wal.Write(&Entry{
+    Op: "SET",
+    Key: "user:123",
+    Value: userData,
+})
+if err != nil {
+    return err
+}
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">wal.Read(fromTimestamp)</div>
+                    <div class="fn-description">
+                        Read WAL entries from a specific timestamp onwards. Used for recovery and replication.
+                        Returns all entries that occurred after the given timestamp.
+                        Efficient for catching up after node restart.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • fromTimestamp: Start reading from this timestamp<br>
+                        <strong>Returns:</strong> []*Entry, error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+entries, err := wal.Read(time.Now().UnixMilli() - 3600000)
+if err != nil {
+    return err
+}
+// Process entries from last hour
+                    </div>
+                </div>
+                
+                <h3>Snapshots</h3>
+                <div class="function-card">
+                    <div class="fn-title">snapshotManager.CreateSnapshot(snapshot)</div>
+                    <div class="fn-description">
+                        Create a point-in-time snapshot of the entire state. Enables fast recovery.
+                        Automatically manages snapshot retention and cleanup.
+                        Snapshots are compressed and stored efficiently.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • snapshot: Complete state to snapshot<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := snapshotManager.CreateSnapshot(&Snapshot{
+    RateLimiters: data,
+    Timestamp: time.Now().UnixMilli(),
+})
+if err != nil {
+    return err
+}
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">snapshotManager.GetLatestSnapshot()</div>
+                    <div class="fn-description">
+                        Retrieve the most recent snapshot for recovery. Used during node startup.
+                        Returns the latest complete state snapshot available.
+                        Enables fast recovery without replaying entire WAL.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Returns:</strong> *Snapshot, error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+snapshot, err := snapshotManager.GetLatestSnapshot()
+if err != nil {
+    return err
+}
+// Use snapshot for recovery
+                    </div>
+                </div>
+                
+                <h3>Recovery</h3>
+                <div class="function-card">
+                    <div class="fn-title">recoveryManager.RecoverFromCrash()</div>
+                    <div class="fn-description">
+                        Recover from crash using snapshots or WAL replay. Automatic recovery process.
+                        Tries snapshot first for speed, falls back to WAL replay if needed.
+                        Ensures data consistency after unexpected shutdown.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := recoveryManager.RecoverFromCrash()
+if err != nil {
+    return err
+}
+// System recovered and ready
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Advanced Tab -->
+        <div id="advanced" class="content">
+            <div class="section">
+                <h2>Advanced Features</h2>
+                <p>Sharding, replication, and load balancing for horizontal scaling.</p>
+                
+                <h3>Consistent Hashing (Sharding)</h3>
+                <div class="function-card">
+                    <div class="fn-title">ring.AddNode(node)</div>
+                    <div class="fn-description">
+                        Add a node to the consistent hash ring for data sharding. Enables horizontal scaling.
+                        Uses virtual nodes for even data distribution across cluster.
+                        Automatically rebalances data when nodes are added.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • node.ID: Unique node identifier<br>
+                        • node.Address: Node address<br>
+                        • node.Port: Node port<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := ring.AddNode(&Node{
+    ID: "node1",
+    Address: "localhost",
+    Port: 8000,
+})
+if err != nil {
+    return err
+}
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">ring.GetNode(key)</div>
+                    <div class="fn-description">
+                        Get the node responsible for a key in the hash ring. Determines data location.
+                        Uses consistent hashing to ensure same key always maps to same node.
+                        O(log n) operation for efficient lookup.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • key: Data key to locate<br>
+                        <strong>Returns:</strong> *Node, error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+node, err := ring.GetNode("user:123")
+if err != nil {
+    return err
+}
+// Send request to responsible node
+                    </div>
+                </div>
+                
+                <h3>Replication</h3>
+                <div class="function-card">
+                    <div class="fn-title">replicationManager.ReplicateKey(key, value)</div>
+                    <div class="fn-description">
+                        Replicate a key to multiple nodes for fault tolerance. Configurable replication factor.
+                        Automatically maintains replicas across different nodes.
+                        Enables data recovery if primary node fails.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • key: Key to replicate<br>
+                        • value: Value to replicate<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := replicationManager.ReplicateKey("user:123", userData)
+if err != nil {
+    return err
+}
+// Data replicated to multiple nodes
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">replicationManager.PerformReadRepair(key)</div>
+                    <div class="fn-description">
+                        Perform read repair to fix inconsistent replicas. Ensures consistency.
+                        Detects and fixes diverged replicas during read operations.
+                        Automatic healing without manual intervention.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • key: Key to repair<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := replicationManager.PerformReadRepair("user:123")
+if err != nil {
+    return err
+}
+// Replicas repaired
+                    </div>
+                </div>
+                
+                <h3>Load Balancing</h3>
+                <div class="function-card">
+                    <div class="fn-title">loadBalancer.SelectNode()</div>
+                    <div class="fn-description">
+                        Select a node based on load balancing strategy. Distributes requests evenly.
+                        Supports multiple strategies: round-robin, least-connections, health-aware.
+                        Automatically skips unhealthy nodes.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Returns:</strong> *Node, error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+node, err := loadBalancer.SelectNode()
+if err != nil {
+    return err
+}
+// Send request to selected node
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">loadBalancer.MarkNodeHealthy(nodeID)</div>
+                    <div class="fn-description">
+                        Mark a node as healthy for load balancing. Re-enables request routing.
+                        Called after node recovery or health check success.
+                        Automatically includes node in load balancing decisions.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Parameters:</strong><br>
+                        • nodeID: ID of the node<br>
+                        <strong>Returns:</strong> error
+                    </div>
+                    <div class="fn-example">
+                        <strong>Go Example:</strong>
+err := loadBalancer.MarkNodeHealthy("node1")
+if err != nil {
+    return err
+}
+// Node marked healthy
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Health Checks Tab -->
+        <div id="health" class="content">
+            <div class="section">
+                <h2>Health Check Functions</h2>
+                <p>Monitor system health and readiness for production deployments.</p>
+                
+                <div class="function-card">
+                    <div class="fn-title">GET /health/live</div>
+                    <div class="fn-description">
+                        Liveness probe - checks if the service is running. Used by orchestrators like Kubernetes.
+                        Returns immediately if service is alive, fails if service is down.
+                        Should be called frequently (every 10-30 seconds).
+                    </div>
+                    <div class="fn-params">
+                        <strong>Response:</strong> { "status": "alive" }
+                    </div>
+                    <div class="fn-example">
+                        <strong>Example:</strong>
+curl http://localhost:8080/health/live
+                    </div>
+                </div>
+                
+                <div class="function-card">
+                    <div class="fn-title">GET /health/ready</div>
+                    <div class="fn-description">
+                        Readiness probe - checks if service is ready to serve requests. More comprehensive than liveness.
+                        Checks all dependencies: database, cache, peers, etc.
+                        Returns detailed component status for debugging.
+                    </div>
+                    <div class="fn-params">
+                        <strong>Response:</strong> { "status": "ready", "components": {...} }
+                    </div>
+                    <div class="fn-example">
+                        <strong>Example:</strong>
+curl http://localhost:8080/health/ready
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Examples Tab -->
+        <div id="examples" class="content">
+            <div class="section">
+                <h2>Real-World Examples</h2>
+                
+                <h3>Example 1: API Rate Limiting</h3>
+                <div class="code-block">
+// Protect API endpoint with rate limiting
+func handleRequest(w http.ResponseWriter, r *http.Request) {
+    userID := r.Header.Get("X-User-ID")
+    
+    // Check rate limit: 100 requests per minute
+    result, err := meshStore.Consume(r.Context(), 
+        fmt.Sprintf("api:user:%s", userID), 
+        100, 
+        60*time.Second)
+    
+    if err != nil {
+        http.Error(w, "Service error", http.StatusInternalServerError)
+        return
+    }
+    
+    if !result.OK {
+        w.Header().Set("Retry-After", fmt.Sprintf("%d", result.ResetAt))
+        http.Error(w, "Rate limit exceeded", http.StatusTooManyRequests)
+        return
+    }
+    
+    // Process request
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte("Request processed"))
+}
+                </div>
+                
+                <h3>Example 2: Replay Attack Prevention</h3>
+                <div class="code-block">
+// Prevent replay attacks on sensitive operations
+func handlePayment(w http.ResponseWriter, r *http.Request) {
+    requestID := r.Header.Get("X-Request-ID")
+    
+    // Check if this request was already processed
+    result, err := meshStore.Seen(r.Context(), 
+        "payment:request", 
+        requestID)
+    
+    if err != nil {
+        http.Error(w, "Service error", http.StatusInternalServerError)
+        return
+    }
+    
+    if result.Seen {
+        // Request already processed, return cached response
+        http.Error(w, "Duplicate request", http.StatusConflict)
+        return
+    }
+    
+    // Process payment
+    processPayment()
+    w.WriteHeader(http.StatusOK)
+}
+                </div>
+                
+                <h3>Example 3: Distributed Caching</h3>
+                <div class="code-block">
+// Cache user profile with 1 hour TTL
+func getUserProfile(userID string) (*Profile, error) {
+    ctx := context.Background()
+    
+    // Try cache first
+    cached, _, err := meshStore.Get(ctx, fmt.Sprintf("profile:%s", userID))
+    if err == nil && cached != nil {
+        return cached.(*Profile), nil
+    }
+    
+    // Cache miss, fetch from database
+    profile := fetchFromDatabase(userID)
+    
+    // Store in cache for 1 hour
+    err = meshStore.Set(ctx, 
+        fmt.Sprintf("profile:%s", userID), 
+        profile, 
+        3600*time.Second)
+    
+    return profile, err
+}
+                </div>
             </div>
         </div>
         
         <footer>
             <p>Made with ❤️ by Prakhar Tripathi & Mayaplus</p>
             <p><strong>Version:</strong> 1.0.0 | <strong>License:</strong> MIT | <strong>Status:</strong> Production Ready ✅</p>
-            <p><a href="https://github.com/TollMesh/toll-mesh-store" style="color: white; text-decoration: none;">View on GitHub</a></p>
+            <p><a href="https://github.com/TollMesh/toll-mesh-store" style="color: #667eea; text-decoration: none; font-weight: 600;">View on GitHub</a></p>
         </footer>
     </div>
     
     <script>
-        function showSection(sectionId) {
-            // Hide all sections
-            const sections = document.querySelectorAll('.content');
-            sections.forEach(section => section.classList.remove('active'));
+        function switchTab(tabName) {
+            // Hide all content
+            const contents = document.querySelectorAll('.content');
+            contents.forEach(content => content.classList.remove('active'));
             
             // Remove active class from all buttons
-            const buttons = document.querySelectorAll('.nav-btn');
+            const buttons = document.querySelectorAll('.tab-btn');
             buttons.forEach(btn => btn.classList.remove('active'));
             
-            // Show selected section
-            document.getElementById(sectionId).classList.add('active');
-            
-            // Add active class to clicked button
-            event.target.classList.add('active');
-        }
-        
-        function switchLanguage(lang) {
-            // Hide all language examples
-            const examples = document.querySelectorAll('[id$="-example"]');
-            examples.forEach(ex => ex.style.display = 'none');
-            
-            const installs = document.querySelectorAll('[id$="-install"]');
-            installs.forEach(inst => inst.style.display = 'none');
-            
-            // Remove active class from all buttons
-            const buttons = document.querySelectorAll('.language-selector button');
-            buttons.forEach(btn => btn.classList.remove('active'));
-            
-            // Show selected language
-            document.getElementById(lang + '-example').style.display = 'block';
-            document.getElementById(lang + '-install').style.display = 'block';
+            // Show selected content
+            document.getElementById(tabName).classList.add('active');
             
             // Add active class to clicked button
             event.target.classList.add('active');

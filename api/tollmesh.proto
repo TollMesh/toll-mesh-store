@@ -1,0 +1,231 @@
+syntax = "proto3";
+
+package tollmesh;
+
+option go_package = "github.com/toll-mesh/store/api";
+
+// TollMesh Service provides distributed cache operations
+service TollMesh {
+  // Rate limiting operations
+  rpc Consume(ConsumeRequest) returns (ConsumeResponse);
+  rpc GetRateLimit(GetRateLimitRequest) returns (GetRateLimitResponse);
+  
+  // Cache operations
+  rpc Get(GetRequest) returns (GetResponse);
+  rpc Set(SetRequest) returns (SetResponse);
+  rpc Delete(DeleteRequest) returns (DeleteResponse);
+  
+  // Replay protection
+  rpc Seen(SeenRequest) returns (SeenResponse);
+  
+  // Search operations
+  rpc Search(SearchRequest) returns (SearchResponse);
+  rpc SearchVector(SearchVectorRequest) returns (SearchVectorResponse);
+  
+  // Graph operations
+  rpc AddNode(AddNodeRequest) returns (AddNodeResponse);
+  rpc AddEdge(AddEdgeRequest) returns (AddEdgeResponse);
+  rpc Reason(ReasonRequest) returns (ReasonResponse);
+  
+  // Agent operations
+  rpc RegisterAgent(RegisterAgentRequest) returns (RegisterAgentResponse);
+  rpc FindSimilarAgents(FindSimilarAgentsRequest) returns (FindSimilarAgentsResponse);
+  rpc CoordinateAgents(CoordinateAgentsRequest) returns (CoordinateAgentsResponse);
+  
+  // Pub/Sub operations
+  rpc Subscribe(SubscribeRequest) returns (stream Message);
+  rpc Publish(PublishRequest) returns (PublishResponse);
+  
+  // Metrics
+  rpc GetStats(GetStatsRequest) returns (GetStatsResponse);
+}
+
+// Rate Limiting Messages
+message ConsumeRequest {
+  string key = 1;
+  int32 limit = 2;
+  int64 window_ms = 3;
+}
+
+message ConsumeResponse {
+  bool ok = 1;
+  int32 remaining = 2;
+  int64 reset_at = 3;
+}
+
+message GetRateLimitRequest {
+  string key = 1;
+}
+
+message GetRateLimitResponse {
+  int32 remaining = 1;
+  int64 reset_at = 2;
+}
+
+// Cache Messages
+message GetRequest {
+  string key = 1;
+}
+
+message GetResponse {
+  bool found = 1;
+  bytes value = 2;
+}
+
+message SetRequest {
+  string key = 1;
+  bytes value = 2;
+}
+
+message SetResponse {
+  bool success = 1;
+}
+
+message DeleteRequest {
+  string key = 1;
+}
+
+message DeleteResponse {
+  bool success = 1;
+}
+
+// Replay Protection Messages
+message SeenRequest {
+  string key = 1;
+}
+
+message SeenResponse {
+  bool seen = 1;
+}
+
+// Search Messages
+message SearchRequest {
+  string query = 1;
+  int32 top_k = 2;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+}
+
+message SearchResult {
+  string id = 1;
+  string content = 2;
+  float score = 3;
+  int32 rank = 4;
+}
+
+message SearchVectorRequest {
+  repeated float vector = 1;
+  int32 top_k = 2;
+}
+
+message SearchVectorResponse {
+  repeated SearchResult results = 1;
+}
+
+// Graph Messages
+message AddNodeRequest {
+  string id = 1;
+  string type = 2;
+  map<string, string> properties = 3;
+}
+
+message AddNodeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message AddEdgeRequest {
+  string source = 1;
+  string target = 2;
+  string type = 3;
+  float weight = 4;
+}
+
+message AddEdgeResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message ReasonRequest {
+  string query = 1;
+  map<string, string> context = 2;
+}
+
+message ReasonResponse {
+  string reasoning = 1;
+  repeated string nodes = 2;
+  repeated string edges = 3;
+}
+
+// Agent Messages
+message RegisterAgentRequest {
+  string id = 1;
+  string name = 2;
+  repeated string capabilities = 3;
+  float reputation = 4;
+}
+
+message RegisterAgentResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+message FindSimilarAgentsRequest {
+  string agent_id = 1;
+  int32 top_k = 2;
+}
+
+message FindSimilarAgentsResponse {
+  repeated Agent agents = 1;
+}
+
+message Agent {
+  string id = 1;
+  string name = 2;
+  repeated string capabilities = 3;
+  float reputation = 4;
+  int64 last_seen = 5;
+}
+
+message CoordinateAgentsRequest {
+  string agent_id_1 = 1;
+  string agent_id_2 = 2;
+}
+
+message CoordinateAgentsResponse {
+  bool success = 1;
+  string error = 2;
+}
+
+// Pub/Sub Messages
+message SubscribeRequest {
+  string topic = 1;
+}
+
+message Message {
+  string topic = 1;
+  bytes data = 2;
+  int64 timestamp = 3;
+}
+
+message PublishRequest {
+  string topic = 1;
+  bytes data = 2;
+}
+
+message PublishResponse {
+  bool success = 1;
+  int32 subscribers = 2;
+}
+
+// Metrics Messages
+message GetStatsRequest {
+  string component = 1; // "all", "store", "search", "graph", "agents"
+}
+
+message GetStatsResponse {
+  map<string, string> stats = 1;
+  int64 timestamp = 2;
+}

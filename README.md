@@ -205,25 +205,39 @@ main().catch(console.error);
 ## 🏗️ Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    TollMeshStore                        │
-├─────────────────────────────────────────────────────────┤
-│                                                         │
-│  Phase 0: Core (CRDTs, Rate Limiting, Caching)        │
-│  Phase 1: Persistence (WAL, Snapshots)                │
-│  Phase 2: Pub/Sub (Topics, Patterns)                  │
-│  Phase 3: Transactions (ACID, Isolation)              │
-│  Phase 4: Scripting (Lua, Timeout)                    │
-│  Phase 5: Search (BM25, Vectors, Hybrid)              │
-│  Phase 6: Graph (Knowledge Graph, Reasoning)          │
-│  Phase 7: Ranking (Multi-stage, Fusion)               │
-│  Phase 8: Agents (Registry, Coordination)             │
-│                                                         │
-├─────────────────────────────────────────────────────────┤
-│  gRPC API (20+ RPC methods)                            │
-│  HTTP API (REST endpoints)                             │
-│  Gossip Protocol (Peer-to-peer sync)                   │
-└─────────────────────────────────────────────────────────┘
+┌──────────────────────────────────────────────────────────────┐
+│                      TollMeshStore                           │
+├──────────────────────────────────────────────────────────────┤
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Phase 0: Core Foundation                          │   │
+│  │  - CRDTs (GCounter, GSet, ExpiringSet)            │   │
+│  │  - Rate Limiting & Replay Protection              │   │
+│  │  - Distributed Caching                            │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Phase 1-4: Data & Operations                      │   │
+│  │  - Persistence (WAL, Snapshots)                    │   │
+│  │  - Pub/Sub Messaging                              │   │
+│  │  - ACID Transactions                              │   │
+│  │  - Lua Scripting                                  │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+│  ┌─────────────────────────────────────────────────────┐   │
+│  │  Phase 5-8: Intelligent Features                   │   │
+│  │  - Hybrid Search (BM25 + Vectors)                 │   │
+│  │  - Knowledge Graph & Reasoning                    │   │
+│  │  - Multi-Stage Ranking                            │   │
+│  │  - Agent Coordination                             │   │
+│  └─────────────────────────────────────────────────────┘   │
+│                                                              │
+├──────────────────────────────────────────────────────────────┤
+│  APIs & Protocols                                            │
+│  - gRPC (20+ RPC methods)                                   │
+│  - HTTP REST API                                            │
+│  - Gossip Protocol (Peer-to-peer sync)                      │
+└──────────────────────────────────────────────────────────────┘
 ```
 
 ---
@@ -346,7 +360,7 @@ TollMeshStore is released under the **MIT License**. See [LICENSE](LICENSE) for 
 - Built Gossip Protocol
 - Implemented all advanced features
 
-**Mayaplus (Family Company)** - Co-Creator & Strategic Partner
+**Mayaplus** - Co-Creator & Strategic Partner
 - Conceptualized TollMeshStore as Redis alternative
 - Defined project vision and goals
 - Guided architectural decisions

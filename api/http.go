@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/toll-mesh/store/coordination"
-	"github.com/toll-mesh/store/core"
+	"github.com/TollMesh/toll-mesh-store/coordination"
+	"github.com/TollMesh/toll-mesh-store/core"
 )
 
 // HTTPServer provides REST API for MeshStore operations

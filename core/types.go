@@ -38,3 +38,10 @@ type ClusterConfig struct {
 	Nodes         []Node
 	EncryptionKey []byte
 }
+
+// MeshStoreState represents the complete state of a MeshStore node
+type MeshStoreState struct {
+	RateLimiters     map[string]interface{}
+	ReplayProtection map[string]bool
+	Cache            map[string]map[string][]byte
+}

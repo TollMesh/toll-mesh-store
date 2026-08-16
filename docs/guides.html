@@ -3,439 +3,1053 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TollMeshStore - Language Guides</title>
+    <title>TollMeshStore - Usage Guides</title>
     <style>
         * {
             margin: 0;
             padding: 0;
             box-sizing: border-box;
         }
-
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
-            color: #fff;
-            overflow-x: hidden;
-        }
-
-        .glass {
-            background: rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            border-radius: 10px;
-            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
-        }
-
-        nav {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            padding: 1.5rem 5%;
-            position: fixed;
-            width: 100%;
-            top: 0;
-            z-index: 1000;
-            background: rgba(15, 12, 41, 0.8);
-            backdrop-filter: blur(10px);
-        }
-
-        .logo {
-            font-size: 1.8rem;
-            font-weight: bold;
+            line-height: 1.6;
+            color: #333;
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
-            cursor: pointer;
+            min-height: 100vh;
+            padding: 20px;
         }
-
-        nav a {
-            color: #fff;
-            text-decoration: none;
-            transition: all 0.3s ease;
-        }
-
-        nav a:hover {
-            color: #667eea;
-        }
-
+        
         .container {
             max-width: 1200px;
             margin: 0 auto;
-            padding: 100px 5% 50px;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
         }
-
-        .guide-section {
-            display: none;
-            animation: fadeIn 0.5s ease;
-        }
-
-        .guide-section.active {
-            display: block;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; }
-            to { opacity: 1; }
-        }
-
-        h1 {
-            font-size: 2.5rem;
-            margin-bottom: 2rem;
+        
+        header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            background-clip: text;
+            color: white;
+            padding: 40px 20px;
+            text-align: center;
         }
-
-        h2 {
-            font-size: 1.8rem;
-            margin-top: 2rem;
-            margin-bottom: 1rem;
-            color: #667eea;
+        
+        header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
         }
-
-        .code-block {
-            background: rgba(0, 0, 0, 0.3);
-            border-left: 3px solid #667eea;
-            padding: 1rem;
-            margin: 1rem 0;
-            border-radius: 5px;
-            overflow-x: auto;
-            line-height: 1.6;
+        
+        header p {
+            font-size: 1.1em;
+            opacity: 0.9;
         }
-
-        code {
-            font-family: 'Courier New', monospace;
-            color: #4ade80;
-            white-space: pre-wrap;
-            word-wrap: break-word;
-            display: block;
+        
+        .content {
+            padding: 40px;
         }
-
-        .tabs {
+        
+        .nav-tabs {
             display: flex;
-            gap: 1rem;
-            margin-bottom: 2rem;
+            gap: 10px;
+            margin-bottom: 30px;
+            border-bottom: 2px solid #eee;
             flex-wrap: wrap;
         }
-
-        .tab-btn {
-            padding: 0.8rem 1.5rem;
+        
+        .nav-tabs button {
+            padding: 12px 24px;
             border: none;
-            border-radius: 50px;
-            background: rgba(255, 255, 255, 0.1);
-            color: #fff;
+            background: none;
             cursor: pointer;
-            transition: all 0.3s ease;
+            font-size: 1em;
+            color: #666;
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .nav-tabs button.active {
+            color: #667eea;
+            border-bottom-color: #667eea;
+        }
+        
+        .nav-tabs button:hover {
+            color: #667eea;
+        }
+        
+        .section {
+            display: none;
+        }
+        
+        .section.active {
+            display: block;
+        }
+        
+        .guide-section {
+            margin-bottom: 40px;
+        }
+        
+        .guide-section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #667eea;
+        }
+        
+        .guide-section h3 {
+            color: #764ba2;
+            margin-top: 25px;
+            margin-bottom: 15px;
+        }
+        
+        .code-block {
+            background: #f5f5f5;
+            border-left: 4px solid #667eea;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+        
+        .code-block code {
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+            color: #333;
+        }
+        
+        .step {
+            background: #f9f9f9;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
+            border-left: 4px solid #764ba2;
+        }
+        
+        .step strong {
+            color: #764ba2;
+        }
+        
+        .lang-tabs {
+            display: flex;
+            gap: 5px;
+            margin: 15px 0;
+            flex-wrap: wrap;
+        }
+        
+        .lang-tabs button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: white;
+            cursor: pointer;
+            border-radius: 5px;
+            font-size: 0.9em;
+            transition: all 0.3s;
+        }
+        
+        .lang-tabs button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+        
+        .lang-tabs button:hover {
+            border-color: #667eea;
+        }
+        
+        .lang-content {
+            display: none;
+        }
+        
+        .lang-content.active {
+            display: block;
+        }
+        
+        .feature-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 20px;
+            margin: 20px 0;
+        }
+        
+        .feature-card {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 8px;
+            border-left: 4px solid #667eea;
+        }
+        
+        .feature-card h4 {
+            color: #667eea;
+            margin-bottom: 10px;
+        }
+        
+        .feature-card p {
+            color: #666;
+            font-size: 0.95em;
+        }
+        
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        
+        table th, table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        table th {
+            background: #f5f5f5;
+            color: #667eea;
             font-weight: 600;
         }
-
-        .tab-btn:hover,
-        .tab-btn.active {
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            transform: translateY(-2px);
+        
+        table tr:hover {
+            background: #f9f9f9;
         }
-
-        p {
-            line-height: 1.8;
-            color: #b0b0b0;
-            margin-bottom: 1rem;
+        
+        .note {
+            background: #e3f2fd;
+            border-left: 4px solid #2196F3;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
         }
-
-        ul {
-            margin-left: 2rem;
-            margin-bottom: 1rem;
+        
+        .warning {
+            background: #fff3e0;
+            border-left: 4px solid #ff9800;
+            padding: 15px;
+            margin: 15px 0;
+            border-radius: 5px;
         }
-
-        li {
-            margin-bottom: 0.5rem;
-            color: #b0b0b0;
-        }
-
+        
         footer {
+            background: #f5f5f5;
+            padding: 20px;
             text-align: center;
-            padding: 2rem 5%;
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            color: #b0b0b0;
-            margin-top: 3rem;
+            color: #666;
+            border-top: 1px solid #ddd;
         }
     </style>
 </head>
 <body>
-    <nav>
-        <div class="logo" onclick="window.location.href='index.html'">🚀 TollMeshStore</div>
-        <a href="index.html">← Back to Home</a>
-    </nav>
-
     <div class="container">
-        <div class="tabs">
-            <button class="tab-btn active" onclick="showGuide('go')">🐹 Go</button>
-            <button class="tab-btn" onclick="showGuide('java')">☕ Java</button>
-            <button class="tab-btn" onclick="showGuide('js')">🚀 JavaScript</button>
-            <button class="tab-btn" onclick="showGuide('rust')">🦀 Rust</button>
-            <button class="tab-btn" onclick="showGuide('python')">🐍 Python</button>
-            <button class="tab-btn" onclick="showGuide('csharp')">🔷 C#/.NET</button>
-            <button class="tab-btn" onclick="showGuide('ruby')">💎 Ruby</button>
-        </div>
-
-        <!-- Go Guide -->
-        <div id="go" class="guide-section active">
-            <h1>Go Installation & Quick Start</h1>
-            <h2>Installation</h2>
-            <div class="code-block"><code>go get github.com/TollMesh/toll-mesh-store</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>package main
+        <header>
+            <h1>🚀 TollMeshStore Usage Guides</h1>
+            <p>Complete step-by-step guides for using TollMeshStore in your preferred language</p>
+        </header>
+        
+        <div class="content">
+            <!-- Navigation Tabs -->
+            <div class="nav-tabs">
+                <button class="active" onclick="showSection('getting-started')">Getting Started</button>
+                <button onclick="showSection('core-operations')">Core Operations</button>
+                <button onclick="showSection('coordination')">Coordination</button>
+                <button onclick="showSection('persistence')">Persistence</button>
+                <button onclick="showSection('health-checks')">Health Checks</button>
+                <button onclick="showSection('examples')">Examples</button>
+            </div>
+            
+            <!-- Getting Started Section -->
+            <div id="getting-started" class="section active">
+                <div class="guide-section">
+                    <h2>Getting Started with TollMeshStore</h2>
+                    
+                    <h3>Installation</h3>
+                    <div class="step">
+                        <strong>Step 1: Clone the Repository</strong>
+                        <div class="code-block"><code>git clone https://github.com/TollMesh/toll-mesh-store.git
+cd toll-mesh-store</code></div>
+                    </div>
+                    
+                    <div class="step">
+                        <strong>Step 2: Build the Project</strong>
+                        <div class="code-block"><code>go build ./...</code></div>
+                    </div>
+                    
+                    <div class="step">
+                        <strong>Step 3: Run Tests</strong>
+                        <div class="code-block"><code>go test ./...</code></div>
+                    </div>
+                    
+                    <h3>Quick Start</h3>
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-quickstart')">Go</button>
+                        <button onclick="switchLang(event, 'python-quickstart')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-quickstart')">Node.js</button>
+                        <button onclick="switchLang(event, 'rust-quickstart')">Rust</button>
+                    </div>
+                    
+                    <div id="go-quickstart" class="lang-content active">
+                        <div class="code-block"><code>package main
 
 import (
-    "context"
-    "log"
-    "time"
-    
-    "github.com/TollMesh/toll-mesh-store/core"
     "github.com/TollMesh/toll-mesh-store/store"
+    "github.com/TollMesh/toll-mesh-store/core"
 )
 
 func main() {
-    config := &core.ClusterConfig{
-        NodeName: "node1",
-        BindAddr: "127.0.0.1",
-        BindPort: 8000,
-    }
+    // Create a new MeshStore
+    meshStore := store.NewMeshStore()
     
-    meshStore, err := store.NewMeshStore(config)
-    if err != nil {
-        log.Fatal(err)
-    }
-    defer meshStore.Close()
-    
-    // Rate limiting
-    result, err := meshStore.Consume(context.Background(), "user:123", 100, 60*time.Second)
-    if err != nil {
-        log.Fatal(err)
-    }
-    
-    log.Printf("Rate limit OK: %v, Remaining: %d", result.OK, result.Remaining)
-}</code></div>
-
-            <h2>Documentation</h2>
-            <ul>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store" style="color: #667eea;">GitHub Repository</a></li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/PROTOCOL.md" style="color: #667eea;">Protocol Documentation</a></li>
-            </ul>
-        </div>
-
-        <!-- Java Guide -->
-        <div id="java" class="guide-section">
-            <h1>Java Installation & Quick Start</h1>
-            <h2>Maven Installation</h2>
-            <div class="code-block"><code>&lt;dependency&gt;
-    &lt;groupId&gt;com.toll-mesh&lt;/groupId&gt;
-    &lt;artifactId&gt;tollmesh-client&lt;/artifactId&gt;
-    &lt;version&gt;1.0.0&lt;/version&gt;
-&lt;/dependency&gt;</code></div>
-
-            <h2>Gradle Installation</h2>
-            <div class="code-block"><code>implementation 'com.toll-mesh:tollmesh-client:1.0.0'</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>import io.grpc.ManagedChannel;
-import io.grpc.ManagedChannelBuilder;
-import com.tollmesh.TollMeshGrpc;
-import com.tollmesh.ConsumeRequest;
-
-public class TollMeshExample {
-    public static void main(String[] args) throws Exception {
-        ManagedChannel channel = ManagedChannelBuilder
-            .forAddress("localhost", 50051)
-            .usePlaintext()
-            .build();
-        
-        TollMeshGrpc.TollMeshBlockingStub stub = 
-            TollMeshGrpc.newBlockingStub(channel);
-        
-        ConsumeRequest request = ConsumeRequest.newBuilder()
-            .setKey("user:123")
-            .setLimit(100)
-            .setWindowMs(60000)
-            .build();
-        
-        var response = stub.consume(request);
-        System.out.println("Rate limit OK: " + response.getOk());
-        
-        channel.shutdown();
+    // Perform rate limiting
+    result, _ := meshStore.Consume(ctx, "user:123", 100, 1*time.Minute)
+    if result.OK {
+        // Request allowed
     }
 }</code></div>
-        </div>
+                    </div>
+                    
+                    <div id="python-quickstart" class="lang-content">
+                        <div class="code-block"><code>import requests
+import json
 
-        <!-- JavaScript Guide -->
-        <div id="js" class="guide-section">
-            <h1>JavaScript/Node.js Installation & Quick Start</h1>
-            <h2>Installation</h2>
-            <div class="code-block"><code>npm install @toll-mesh/client</code></div>
+# Connect to TollMeshStore HTTP API
+BASE_URL = "http://localhost:8080"
 
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>const grpc = require('@grpc/grpc-js');
-const protoLoader = require('@grpc/proto-loader');
-const util = require('util');
+# Rate limiting
+response = requests.post(f"{BASE_URL}/consume", json={
+    "key": "user:123",
+    "limit": 100,
+    "window": 60000  # milliseconds
+})
 
-async function main() {
-    const packageDefinition = protoLoader.loadSync('tollmesh.proto');
-    const tollmesh = grpc.loadPackageDefinition(packageDefinition).tollmesh;
-    
-    const client = new tollmesh.TollMesh(
-        'localhost:50051',
-        grpc.credentials.createInsecure()
-    );
-    
-    const consume = util.promisify(client.consume.bind(client));
-    
-    const response = await consume({
+if response.json()["ok"]:
+    print("Request allowed")
+else:
+    print("Rate limited")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-quickstart" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+const BASE_URL = 'http://localhost:8080';
+
+// Rate limiting
+async function checkRateLimit() {
+    const response = await axios.post(`${BASE_URL}/consume`, {
         key: 'user:123',
         limit: 100,
-        window_ms: 60000
+        window: 60000  // milliseconds
     });
     
-    console.log('Rate limit OK:', response.ok);
+    if (response.data.ok) {
+        console.log('Request allowed');
+    } else {
+        console.log('Rate limited');
+    }
 }
 
-main().catch(console.error);</code></div>
-        </div>
-
-        <!-- Rust Guide -->
-        <div id="rust" class="guide-section">
-            <h1>Rust Installation & Quick Start</h1>
-            <h2>Cargo.toml</h2>
-            <div class="code-block"><code>[dependencies]
-tonic = "0.10"
-prost = "0.12"
-tokio = { version = "1", features = ["full"] }
-tokio-stream = "0.1"
-
-[build-dependencies]
-tonic-build = "0.10"</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>use tonic::transport::Channel;
-use tollmesh::ConsumeRequest;
+checkRateLimit();</code></div>
+                    </div>
+                    
+                    <div id="rust-quickstart" class="lang-content">
+                        <div class="code-block"><code>use reqwest::Client;
 
 #[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let channel = Channel::from_static("http://localhost:50051")
-        .connect()
-        .await?;
+async fn main() {
+    let client = Client::new();
     
-    let mut client = tollmesh::toll_mesh_client::TollMeshClient::new(channel);
+    let response = client
+        .post("http://localhost:8080/consume")
+        .json(&serde_json::json!({
+            "key": "user:123",
+            "limit": 100,
+            "window": 60000
+        }))
+        .send()
+        .await
+        .unwrap();
     
-    let request = ConsumeRequest {
-        key: "user:123".to_string(),
-        limit: 100,
-        window_ms: 60000,
-    };
-    
-    let response = client.consume(request).await?;
-    println!("Rate limit OK: {}", response.get_ref().ok);
-    
-    Ok(())
-}</code></div>
-        </div>
-
-        <!-- Python Guide -->
-        <div id="python" class="guide-section">
-            <h1>Python Installation & Quick Start</h1>
-            <h2>Installation</h2>
-            <div class="code-block"><code>pip install tollmesh-client</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>import grpc
-from tollmesh import tollmesh_pb2, tollmesh_pb2_grpc
-
-def main():
-    channel = grpc.insecure_channel('localhost:50051')
-    stub = tollmesh_pb2_grpc.TollMeshStub(channel)
-    
-    request = tollmesh_pb2.ConsumeRequest(
-        key='user:123',
-        limit=100,
-        window_ms=60000
-    )
-    
-    response = stub.Consume(request)
-    print(f'Rate limit OK: {response.ok}')
-
-if __name__ == '__main__':
-    main()</code></div>
-        </div>
-
-        <!-- C# Guide -->
-        <div id="csharp" class="guide-section">
-            <h1>C#/.NET Installation & Quick Start</h1>
-            <h2>Installation</h2>
-            <div class="code-block"><code>dotnet add package TollMesh.Client</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>using Grpc.Net.Client;
-using Tollmesh;
-
-class Program {
-    static async Task Main(string[] args) {
-        var channel = GrpcChannel.ForAddress("http://localhost:50051");
-        var client = new TollMesh.TollMeshClient(channel);
-        
-        var request = new ConsumeRequest {
-            Key = "user:123",
-            Limit = 100,
-            WindowMs = 60000
-        };
-        
-        var response = await client.ConsumeAsync(request);
-        Console.WriteLine($"Rate limit OK: {response.Ok}");
+    let data: serde_json::Value = response.json().await.unwrap();
+    if data["ok"].as_bool().unwrap() {
+        println!("Request allowed");
     }
 }</code></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Core Operations Section -->
+            <div id="core-operations" class="section">
+                <div class="guide-section">
+                    <h2>Core Operations</h2>
+                    
+                    <h3>Rate Limiting (Consume)</h3>
+                    <p>Check if a request is within rate limits.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-consume')">Go</button>
+                        <button onclick="switchLang(event, 'python-consume')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-consume')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-consume" class="lang-content active">
+                        <div class="code-block"><code>// Rate limiting with 100 requests per minute
+result, err := meshStore.Consume(ctx, "api:user:123", 100, time.Minute)
+if err != nil {
+    log.Fatal(err)
+}
+
+if result.OK {
+    fmt.Printf("Allowed. Remaining: %d\n", result.Remaining)
+} else {
+    fmt.Printf("Rate limited. Reset at: %d\n", result.ResetAt)
+}</code></div>
+                    </div>
+                    
+                    <div id="python-consume" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+response = requests.post('http://localhost:8080/consume', json={
+    'key': 'api:user:123',
+    'limit': 100,
+    'window': 60000  # 1 minute in milliseconds
+})
+
+data = response.json()
+if data['ok']:
+    print(f"Allowed. Remaining: {data['remaining']}")
+else:
+    print(f"Rate limited. Reset at: {data['reset_at']}")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-consume" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+const response = await axios.post('http://localhost:8080/consume', {
+    key: 'api:user:123',
+    limit: 100,
+    window: 60000  // 1 minute in milliseconds
+});
+
+const { ok, remaining, reset_at } = response.data;
+if (ok) {
+    console.log(`Allowed. Remaining: ${remaining}`);
+} else {
+    console.log(`Rate limited. Reset at: ${reset_at}`);
+}</code></div>
+                    </div>
+                    
+                    <h3>Replay Protection (Seen)</h3>
+                    <p>Detect and prevent replay attacks using nonces.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-seen')">Go</button>
+                        <button onclick="switchLang(event, 'python-seen')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-seen')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-seen" class="lang-content active">
+                        <div class="code-block"><code>// Check if nonce was already seen (replay detection)
+seen, err := meshStore.Seen(ctx, "nonce:abc123", 5*time.Minute)
+if err != nil {
+    log.Fatal(err)
+}
+
+if seen {
+    fmt.Println("Replay attack detected!")
+} else {
+    fmt.Println("Nonce is valid")
+}</code></div>
+                    </div>
+                    
+                    <div id="python-seen" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+response = requests.post('http://localhost:8080/seen', json={
+    'key': 'nonce:abc123',
+    'ttl': 300000  # 5 minutes in milliseconds
+})
+
+data = response.json()
+if data['seen']:
+    print("Replay attack detected!")
+else:
+    print("Nonce is valid")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-seen" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+const response = await axios.post('http://localhost:8080/seen', {
+    key: 'nonce:abc123',
+    ttl: 300000  // 5 minutes in milliseconds
+});
+
+const { seen } = response.data;
+if (seen) {
+    console.log("Replay attack detected!");
+} else {
+    console.log("Nonce is valid");
+}</code></div>
+                    </div>
+                    
+                    <h3>Caching (Get/Set)</h3>
+                    <p>Store and retrieve cached data with TTL.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-cache')">Go</button>
+                        <button onclick="switchLang(event, 'python-cache')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-cache')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-cache" class="lang-content active">
+                        <div class="code-block"><code>// Set a cached value
+err := meshStore.Set(ctx, "jwks", "key:openai", []byte(jwksData), 1*time.Hour)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Get a cached value
+value, exists, err := meshStore.Get(ctx, "jwks", "key:openai")
+if err != nil {
+    log.Fatal(err)
+}
+
+if exists {
+    fmt.Printf("Found: %s\n", string(value))
+} else {
+    fmt.Println("Not found or expired")
+}</code></div>
+                    </div>
+                    
+                    <div id="python-cache" class="lang-content">
+                        <div class="code-block"><code">import requests
+
+# Set cache
+requests.post('http://localhost:8080/cache/set', json={
+    'namespace': 'jwks',
+    'key': 'key:openai',
+    'value': jwks_data,
+    'ttl': 3600000  # 1 hour in milliseconds
+})
+
+# Get cache
+response = requests.get('http://localhost:8080/cache/get', params={
+    'namespace': 'jwks',
+    'key': 'key:openai'
+})
+
+data = response.json()
+if data['exists']:
+    print(f"Found: {data['value']}")
+else:
+    print("Not found or expired")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-cache" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+// Set cache
+await axios.post('http://localhost:8080/cache/set', {
+    namespace: 'jwks',
+    key: 'key:openai',
+    value: jwksData,
+    ttl: 3600000  // 1 hour in milliseconds
+});
+
+// Get cache
+const response = await axios.get('http://localhost:8080/cache/get', {
+    params: {
+        namespace: 'jwks',
+        key: 'key:openai'
+    }
+});
+
+const { exists, value } = response.data;
+if (exists) {
+    console.log(`Found: ${value}`);
+} else {
+    console.log("Not found or expired");
+}</code></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Coordination Section -->
+            <div id="coordination" class="section">
+                <div class="guide-section">
+                    <h2>Coordination & Clustering</h2>
+                    
+                    <h3>Peer Management</h3>
+                    <p>Manage cluster peers and monitor their health.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-peers')">Go</button>
+                        <button onclick="switchLang(event, 'python-peers')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-peers')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-peers" class="lang-content active">
+                        <div class="code-block"><code>// Get list of peers
+peers := coordinator.GetPeers()
+for _, peer := range peers {
+    fmt.Printf("Peer: %s (%s:%d)\n", peer.ID, peer.Address, peer.Port)
+}
+
+// Add a new peer
+newPeer := &core.Node{
+    ID:      "node3",
+    Address: "192.168.1.3",
+    Port:    8000,
+}
+err := coordinator.AddPeer(newPeer)
+if err != nil {
+    log.Fatal(err)
+}</code></div>
+                    </div>
+                    
+                    <div id="python-peers" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+# Get peers
+response = requests.get('http://localhost:8080/peers')
+peers = response.json()['peers']
+
+for peer in peers:
+    print(f"Peer: {peer['id']} ({peer['address']}:{peer['port']})")
+
+# Add peer (via cluster join endpoint)
+requests.post('http://localhost:8080/cluster/join', json={
+    'node_id': 'node3',
+    'address': '192.168.1.3',
+    'port': 8000
+})</code></div>
+                    </div>
+                    
+                    <div id="nodejs-peers" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+// Get peers
+const response = await axios.get('http://localhost:8080/peers');
+const peers = response.data.peers;
+
+peers.forEach(peer => {
+    console.log(`Peer: ${peer.id} (${peer.address}:${peer.port})`);
+});
+
+// Add peer
+await axios.post('http://localhost:8080/cluster/join', {
+    node_id: 'node3',
+    address: '192.168.1.3',
+    port: 8000
+});</code></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Persistence Section -->
+            <div id="persistence" class="section">
+                <div class="guide-section">
+                    <h2>Persistence & Recovery</h2>
+                    
+                    <h3>Write-Ahead Log (WAL)</h3>
+                    <p>Enable durable operation logging for crash recovery.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-wal')">Go</button>
+                        <button onclick="switchLang(event, 'python-wal')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-wal')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-wal" class="lang-content active">
+                        <div class="code-block"><code>import "github.com/TollMesh/toll-mesh-store/persistence"
+
+// Create WAL with configuration
+config := persistence.WALConfig{
+    MaxSegmentSize: 100 * 1024 * 1024,  // 100MB
+    RotationTime:   24 * time.Hour,
+}
+
+wal, err := persistence.NewWriteAheadLog("/var/lib/toll/wal", config)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Log an operation
+entry := &persistence.WALEntry{
+    Timestamp: time.Now().UnixMilli(),
+    Operation: "consume",
+    Key:       "user:123",
+    Value:     []byte("100"),
+}
+
+err = wal.Append(entry)
+if err != nil {
+    log.Fatal(err)
+}
+
+// Start rotation
+wal.Start()
+defer wal.Stop()</code></div>
+                    </div>
+                    
+                    <div id="python-wal" class="lang-content">
+                        <div class="code-block"><code"># WAL is managed by the server
+# Configure via environment variables:
+# TOLL_WAL_PATH=/var/lib/toll/wal
+# TOLL_WAL_MAX_SIZE=104857600  # 100MB
+# TOLL_WAL_ROTATION_TIME=86400  # 24 hours
+
+# Monitor WAL stats
+response = requests.get('http://localhost:8080/stats')
+stats = response.json()
+print(f"WAL entries: {stats['wal_entries']}")
+print(f"WAL size: {stats['wal_size_bytes']} bytes")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-wal" class="lang-content">
+                        <div class="code-block"><code>// WAL is managed by the server
+// Configure via environment variables:
+// TOLL_WAL_PATH=/var/lib/toll/wal
+// TOLL_WAL_MAX_SIZE=104857600  // 100MB
+// TOLL_WAL_ROTATION_TIME=86400  // 24 hours
+
+// Monitor WAL stats
+const response = await axios.get('http://localhost:8080/stats');
+const stats = response.data;
+console.log(`WAL entries: ${stats.wal_entries}`);
+console.log(`WAL size: ${stats.wal_size_bytes} bytes`);</code></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Health Checks Section -->
+            <div id="health-checks" class="section">
+                <div class="guide-section">
+                    <h2>Health Checks & Monitoring</h2>
+                    
+                    <h3>Liveness Probe</h3>
+                    <p>Check if the service is alive and responding.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-liveness')">Go</button>
+                        <button onclick="switchLang(event, 'python-liveness')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-liveness')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-liveness" class="lang-content active">
+                        <div class="code-block"><code>import "net/http"
+
+// Check liveness
+resp, err := http.Get("http://localhost:8080/health")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+if resp.StatusCode == http.StatusOK {
+    fmt.Println("Service is healthy")
+} else {
+    fmt.Println("Service is unhealthy")
+}</code></div>
+                    </div>
+                    
+                    <div id="python-liveness" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+response = requests.get('http://localhost:8080/health')
+
+if response.status_code == 200:
+    health = response.json()
+    print(f"Status: {health['status']}")
+    print(f"Uptime: {health['uptime_seconds']} seconds")
+    print(f"Peers: {health['peers']}")
+else:
+    print("Service is unhealthy")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-liveness" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+try {
+    const response = await axios.get('http://localhost:8080/health');
+    const health = response.data;
+    console.log(`Status: ${health.status}`);
+    console.log(`Uptime: ${health.uptime_seconds} seconds`);
+    console.log(`Peers: ${health.peers}`);
+} catch (error) {
+    console.log("Service is unhealthy");
+}</code></div>
+                    </div>
+                    
+                    <h3>Readiness Probe</h3>
+                    <p>Check if the service is ready to accept traffic.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-readiness')">Go</button>
+                        <button onclick="switchLang(event, 'python-readiness')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-readiness')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-readiness" class="lang-content active">
+                        <div class="code-block"><code>import "net/http"
+
+// Check readiness
+resp, err := http.Get("http://localhost:8080/ready")
+if err != nil {
+    log.Fatal(err)
+}
+defer resp.Body.Close()
+
+if resp.StatusCode == http.StatusOK {
+    fmt.Println("Service is ready")
+} else {
+    fmt.Println("Service is not ready")
+}</code></div>
+                    </div>
+                    
+                    <div id="python-readiness" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+response = requests.get('http://localhost:8080/ready')
+
+if response.status_code == 200:
+    readiness = response.json()
+    print(f"Ready: {readiness['ready']}")
+    if not readiness['ready']:
+        print(f"Reason: {readiness['reason']}")
+else:
+    print("Service is not ready")</code></div>
+                    </div>
+                    
+                    <div id="nodejs-readiness" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+try {
+    const response = await axios.get('http://localhost:8080/ready');
+    const readiness = response.data;
+    console.log(`Ready: ${readiness.ready}`);
+    if (!readiness.ready) {
+        console.log(`Reason: ${readiness.reason}`);
+    }
+} catch (error) {
+    console.log("Service is not ready");
+}</code></div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Examples Section -->
+            <div id="examples" class="section">
+                <div class="guide-section">
+                    <h2>Complete Examples</h2>
+                    
+                    <h3>Example 1: API Rate Limiting</h3>
+                    <p>Implement rate limiting for an API endpoint.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-example1')">Go</button>
+                        <button onclick="switchLang(event, 'python-example1')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-example1')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-example1" class="lang-content active">
+                        <div class="code-block"><code>func apiHandler(w http.ResponseWriter, r *http.Request) {
+    userID := r.Header.Get("X-User-ID")
+    
+    // Check rate limit: 100 requests per minute
+    result, err := meshStore.Consume(r.Context(), 
+        fmt.Sprintf("api:%s", userID), 100, time.Minute)
+    
+    if err != nil {
+        http.Error(w, "Internal error", http.StatusInternalServerError)
+        return
+    }
+    
+    if !result.OK {
+        w.Header().Set("Retry-After", fmt.Sprintf("%d", result.ResetAt))
+        http.Error(w, "Rate limited", http.StatusTooManyRequests)
+        return
+    }
+    
+    // Process request
+    w.WriteHeader(http.StatusOK)
+    w.Write([]byte("Success"))
+}</code></div>
+                    </div>
+                    
+                    <div id="python-example1" class="lang-content">
+                        <div class="code-block"><code>from flask import Flask, request, jsonify
+import requests
+
+app = Flask(__name__)
+TOLL_URL = "http://localhost:8080"
+
+@app.route('/api/data', methods=['GET'])
+def get_data():
+    user_id = request.headers.get('X-User-ID')
+    
+    # Check rate limit
+    response = requests.post(f'{TOLL_URL}/consume', json={
+        'key': f'api:{user_id}',
+        'limit': 100,
+        'window': 60000
+    })
+    
+    data = response.json()
+    if not data['ok']:
+        return jsonify({'error': 'Rate limited'}), 429
+    
+    # Process request
+    return jsonify({'data': 'success'})</code></div>
+                    </div>
+                    
+                    <div id="nodejs-example1" class="lang-content">
+                        <div class="code-block"><code>const express = require('express');
+const axios = require('axios');
+
+const app = express();
+const TOLL_URL = 'http://localhost:8080';
+
+app.get('/api/data', async (req, res) => {
+    const userId = req.headers['x-user-id'];
+    
+    try {
+        // Check rate limit
+        const response = await axios.post(`${TOLL_URL}/consume`, {
+            key: `api:${userId}`,
+            limit: 100,
+            window: 60000
+        });
+        
+        if (!response.data.ok) {
+            return res.status(429).json({ error: 'Rate limited' });
+        }
+        
+        // Process request
+        res.json({ data: 'success' });
+    } catch (error) {
+        res.status(500).json({ error: 'Internal error' });
+    }
+});
+
+app.listen(3000);</code></div>
+                    </div>
+                    
+                    <h3>Example 2: Replay Attack Prevention</h3>
+                    <p>Prevent replay attacks using nonce validation.</p>
+                    
+                    <div class="lang-tabs">
+                        <button class="active" onclick="switchLang(event, 'go-example2')">Go</button>
+                        <button onclick="switchLang(event, 'python-example2')">Python</button>
+                        <button onclick="switchLang(event, 'nodejs-example2')">Node.js</button>
+                    </div>
+                    
+                    <div id="go-example2" class="lang-content active">
+                        <div class="code-block"><code>func validateRequest(r *http.Request) error {
+    nonce := r.Header.Get("X-Nonce")
+    if nonce == "" {
+        return fmt.Errorf("missing nonce")
+    }
+    
+    // Check if nonce was already used (5 minute window)
+    seen, err := meshStore.Seen(r.Context(), 
+        fmt.Sprintf("nonce:%s", nonce), 5*time.Minute)
+    
+    if err != nil {
+        return err
+    }
+    
+    if seen {
+        return fmt.Errorf("replay attack detected")
+    }
+    
+    return nil
+}</code></div>
+                    </div>
+                    
+                    <div id="python-example2" class="lang-content">
+                        <div class="code-block"><code>import requests
+
+def validate_request(headers):
+    nonce = headers.get('X-Nonce')
+    if not nonce:
+        raise ValueError("Missing nonce")
+    
+    # Check if nonce was already used
+    response = requests.post('http://localhost:8080/seen', json={
+        'key': f'nonce:{nonce}',
+        'ttl': 300000  # 5 minutes
+    })
+    
+    data = response.json()
+    if data['seen']:
+        raise ValueError("Replay attack detected")
+    
+    return True</code></div>
+                    </div>
+                    
+                    <div id="nodejs-example2" class="lang-content">
+                        <div class="code-block"><code>const axios = require('axios');
+
+async function validateRequest(headers) {
+    const nonce = headers['x-nonce'];
+    if (!nonce) {
+        throw new Error("Missing nonce");
+    }
+    
+    // Check if nonce was already used
+    const response = await axios.post('http://localhost:8080/seen', {
+        key: `nonce:${nonce}`,
+        ttl: 300000  // 5 minutes
+    });
+    
+    if (response.data.seen) {
+        throw new Error("Replay attack detected");
+    }
+    
+    return true;
+}</code></div>
+                    </div>
+                </div>
+            </div>
         </div>
-
-        <!-- Ruby Guide -->
-        <div id="ruby" class="guide-section">
-            <h1>Ruby Installation & Quick Start</h1>
-            <h2>Installation</h2>
-            <div class="code-block"><code>gem install tollmesh</code></div>
-
-            <h2>Quick Example</h2>
-            <div class="code-block"><code>require 'tollmesh'
-
-channel = GRPC::Core::Channel.new('localhost:50051', {})
-stub = Tollmesh::TollMesh::Stub.new(channel)
-
-request = Tollmesh::ConsumeRequest.new(
-  key: 'user:123',
-  limit: 100,
-  window_ms: 60000
-)
-
-response = stub.consume(request)
-puts "Rate limit OK: #{response.ok}"</code></div>
-        </div>
+        
+        <footer>
+            <p>&copy; 2026 TollMesh. All rights reserved. | <a href="https://github.com/TollMesh/toll-mesh-store">GitHub</a></p>
+        </footer>
     </div>
-
-    <footer>
-        <p>&copy; 2026 TollMeshStore. MIT License.</p>
-    </footer>
-
+    
     <script>
-        function showGuide(language) {
-            // Hide all guides
-            document.querySelectorAll('.guide-section').forEach(el => {
-                el.classList.remove('active');
-            });
+        function showSection(sectionId) {
+            // Hide all sections
+            const sections = document.querySelectorAll('.section');
+            sections.forEach(section => section.classList.remove('active'));
             
             // Remove active class from all buttons
-            document.querySelectorAll('.tab-btn').forEach(btn => {
-                btn.classList.remove('active');
-            });
+            const buttons = document.querySelectorAll('.nav-tabs button');
+            buttons.forEach(button => button.classList.remove('active'));
             
-            // Show selected guide
-            document.getElementById(language).classList.add('active');
+            // Show selected section
+            document.getElementById(sectionId).classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+        
+        function switchLang(event, contentId) {
+            // Find parent container
+            const parent = event.target.closest('.guide-section') || event.target.closest('.step');
+            
+            // Hide all lang contents in this section
+            const langContents = parent.querySelectorAll('.lang-content');
+            langContents.forEach(content => content.classList.remove('active'));
+            
+            // Remove active class from all lang buttons
+            const langButtons = parent.querySelectorAll('.lang-tabs button');
+            langButtons.forEach(button => button.classList.remove('active'));
+            
+            // Show selected content
+            const content = parent.querySelector(`#${contentId}`);
+            if (content) {
+                content.classList.add('active');
+            }
             
             // Add active class to clicked button
             event.target.classList.add('active');

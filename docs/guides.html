@@ -1,0 +1,441 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TollMeshStore - Language Guides</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+            color: #fff;
+            overflow-x: hidden;
+        }
+
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 10px;
+            box-shadow: 0 8px 32px 0 rgba(31, 38, 135, 0.37);
+        }
+
+        nav {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 1.5rem 5%;
+            position: fixed;
+            width: 100%;
+            top: 0;
+            z-index: 1000;
+            background: rgba(15, 12, 41, 0.8);
+            backdrop-filter: blur(10px);
+        }
+
+        .logo {
+            font-size: 1.8rem;
+            font-weight: bold;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+            cursor: pointer;
+        }
+
+        nav a {
+            color: #fff;
+            text-decoration: none;
+            transition: all 0.3s ease;
+        }
+
+        nav a:hover {
+            color: #667eea;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 100px 5% 50px;
+        }
+
+        .guide-section {
+            display: none;
+            animation: fadeIn 0.5s ease;
+        }
+
+        .guide-section.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            margin-bottom: 2rem;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            background-clip: text;
+        }
+
+        h2 {
+            font-size: 1.8rem;
+            margin-top: 2rem;
+            margin-bottom: 1rem;
+            color: #667eea;
+        }
+
+        .code-block {
+            background: rgba(0, 0, 0, 0.3);
+            border-left: 3px solid #667eea;
+            padding: 1rem;
+            margin: 1rem 0;
+            border-radius: 5px;
+            overflow-x: auto;
+        }
+
+        code {
+            font-family: 'Courier New', monospace;
+            color: #4ade80;
+        }
+
+        .tabs {
+            display: flex;
+            gap: 1rem;
+            margin-bottom: 2rem;
+            flex-wrap: wrap;
+        }
+
+        .tab-btn {
+            padding: 0.8rem 1.5rem;
+            border: none;
+            border-radius: 50px;
+            background: rgba(255, 255, 255, 0.1);
+            color: #fff;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-weight: 600;
+        }
+
+        .tab-btn:hover,
+        .tab-btn.active {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            transform: translateY(-2px);
+        }
+
+        p {
+            line-height: 1.8;
+            color: #b0b0b0;
+            margin-bottom: 1rem;
+        }
+
+        ul {
+            margin-left: 2rem;
+            margin-bottom: 1rem;
+        }
+
+        li {
+            margin-bottom: 0.5rem;
+            color: #b0b0b0;
+        }
+
+        footer {
+            text-align: center;
+            padding: 2rem 5%;
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            color: #b0b0b0;
+            margin-top: 3rem;
+        }
+    </style>
+</head>
+<body>
+    <nav>
+        <div class="logo" onclick="window.location.href='index.html'">🚀 TollMeshStore</div>
+        <a href="index.html">← Back to Home</a>
+    </nav>
+
+    <div class="container">
+        <div class="tabs">
+            <button class="tab-btn active" onclick="showGuide('go')">🐹 Go</button>
+            <button class="tab-btn" onclick="showGuide('java')">☕ Java</button>
+            <button class="tab-btn" onclick="showGuide('js')">🚀 JavaScript</button>
+            <button class="tab-btn" onclick="showGuide('rust')">🦀 Rust</button>
+            <button class="tab-btn" onclick="showGuide('python')">🐍 Python</button>
+            <button class="tab-btn" onclick="showGuide('csharp')">🔷 C#/.NET</button>
+            <button class="tab-btn" onclick="showGuide('ruby')">💎 Ruby</button>
+        </div>
+
+        <!-- Go Guide -->
+        <div id="go" class="guide-section active">
+            <h1>Go Installation & Quick Start</h1>
+            <h2>Installation</h2>
+            <div class="code-block"><code>go get github.com/TollMesh/toll-mesh-store</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>package main
+
+import (
+    "context"
+    "log"
+    "time"
+    
+    "github.com/TollMesh/toll-mesh-store/core"
+    "github.com/TollMesh/toll-mesh-store/store"
+)
+
+func main() {
+    config := &core.ClusterConfig{
+        NodeName: "node1",
+        BindAddr: "127.0.0.1",
+        BindPort: 8000,
+    }
+    
+    meshStore, err := store.NewMeshStore(config)
+    if err != nil {
+        log.Fatal(err)
+    }
+    defer meshStore.Close()
+    
+    // Rate limiting
+    result, err := meshStore.Consume(context.Background(), "user:123", 100, 60*time.Second)
+    if err != nil {
+        log.Fatal(err)
+    }
+    
+    log.Printf("Rate limit OK: %v, Remaining: %d", result.OK, result.Remaining)
+}</code></div>
+
+            <h2>Documentation</h2>
+            <ul>
+                <li><a href="https://github.com/TollMesh/toll-mesh-store" style="color: #667eea;">GitHub Repository</a></li>
+                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/PROTOCOL.md" style="color: #667eea;">Protocol Documentation</a></li>
+            </ul>
+        </div>
+
+        <!-- Java Guide -->
+        <div id="java" class="guide-section">
+            <h1>Java Installation & Quick Start</h1>
+            <h2>Maven Installation</h2>
+            <div class="code-block"><code>&lt;dependency&gt;
+    &lt;groupId&gt;com.toll-mesh&lt;/groupId&gt;
+    &lt;artifactId&gt;tollmesh-client&lt;/artifactId&gt;
+    &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;</code></div>
+
+            <h2>Gradle Installation</h2>
+            <div class="code-block"><code>implementation 'com.toll-mesh:tollmesh-client:1.0.0'</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>import io.grpc.ManagedChannel;
+import io.grpc.ManagedChannelBuilder;
+import com.tollmesh.TollMeshGrpc;
+import com.tollmesh.ConsumeRequest;
+
+public class TollMeshExample {
+    public static void main(String[] args) throws Exception {
+        ManagedChannel channel = ManagedChannelBuilder
+            .forAddress("localhost", 50051)
+            .usePlaintext()
+            .build();
+        
+        TollMeshGrpc.TollMeshBlockingStub stub = 
+            TollMeshGrpc.newBlockingStub(channel);
+        
+        ConsumeRequest request = ConsumeRequest.newBuilder()
+            .setKey("user:123")
+            .setLimit(100)
+            .setWindowMs(60000)
+            .build();
+        
+        var response = stub.consume(request);
+        System.out.println("Rate limit OK: " + response.getOk());
+        
+        channel.shutdown();
+    }
+}</code></div>
+        </div>
+
+        <!-- JavaScript Guide -->
+        <div id="js" class="guide-section">
+            <h1>JavaScript/Node.js Installation & Quick Start</h1>
+            <h2>Installation</h2>
+            <div class="code-block"><code>npm install @toll-mesh/client</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>const grpc = require('@grpc/grpc-js');
+const protoLoader = require('@grpc/proto-loader');
+const util = require('util');
+
+async function main() {
+    const packageDefinition = protoLoader.loadSync('tollmesh.proto');
+    const tollmesh = grpc.loadPackageDefinition(packageDefinition).tollmesh;
+    
+    const client = new tollmesh.TollMesh(
+        'localhost:50051',
+        grpc.credentials.createInsecure()
+    );
+    
+    const consume = util.promisify(client.consume.bind(client));
+    
+    const response = await consume({
+        key: 'user:123',
+        limit: 100,
+        window_ms: 60000
+    });
+    
+    console.log('Rate limit OK:', response.ok);
+}
+
+main().catch(console.error);</code></div>
+        </div>
+
+        <!-- Rust Guide -->
+        <div id="rust" class="guide-section">
+            <h1>Rust Installation & Quick Start</h1>
+            <h2>Cargo.toml</h2>
+            <div class="code-block"><code>[dependencies]
+tonic = "0.10"
+prost = "0.12"
+tokio = { version = "1", features = ["full"] }
+tokio-stream = "0.1"
+
+[build-dependencies]
+tonic-build = "0.10"</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>use tonic::transport::Channel;
+use tollmesh::ConsumeRequest;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+    let channel = Channel::from_static("http://localhost:50051")
+        .connect()
+        .await?;
+    
+    let mut client = tollmesh::toll_mesh_client::TollMeshClient::new(channel);
+    
+    let request = ConsumeRequest {
+        key: "user:123".to_string(),
+        limit: 100,
+        window_ms: 60000,
+    };
+    
+    let response = client.consume(request).await?;
+    println!("Rate limit OK: {}", response.get_ref().ok);
+    
+    Ok(())
+}</code></div>
+        </div>
+
+        <!-- Python Guide -->
+        <div id="python" class="guide-section">
+            <h1>Python Installation & Quick Start</h1>
+            <h2>Installation</h2>
+            <div class="code-block"><code>pip install tollmesh-client</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>import grpc
+from tollmesh import tollmesh_pb2, tollmesh_pb2_grpc
+
+def main():
+    channel = grpc.insecure_channel('localhost:50051')
+    stub = tollmesh_pb2_grpc.TollMeshStub(channel)
+    
+    request = tollmesh_pb2.ConsumeRequest(
+        key='user:123',
+        limit=100,
+        window_ms=60000
+    )
+    
+    response = stub.Consume(request)
+    print(f'Rate limit OK: {response.ok}')
+
+if __name__ == '__main__':
+    main()</code></div>
+        </div>
+
+        <!-- C# Guide -->
+        <div id="csharp" class="guide-section">
+            <h1>C#/.NET Installation & Quick Start</h1>
+            <h2>Installation</h2>
+            <div class="code-block"><code>dotnet add package TollMesh.Client</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>using Grpc.Net.Client;
+using Tollmesh;
+
+class Program {
+    static async Task Main(string[] args) {
+        var channel = GrpcChannel.ForAddress("http://localhost:50051");
+        var client = new TollMesh.TollMeshClient(channel);
+        
+        var request = new ConsumeRequest {
+            Key = "user:123",
+            Limit = 100,
+            WindowMs = 60000
+        };
+        
+        var response = await client.ConsumeAsync(request);
+        Console.WriteLine($"Rate limit OK: {response.Ok}");
+    }
+}</code></div>
+        </div>
+
+        <!-- Ruby Guide -->
+        <div id="ruby" class="guide-section">
+            <h1>Ruby Installation & Quick Start</h1>
+            <h2>Installation</h2>
+            <div class="code-block"><code>gem install tollmesh</code></div>
+
+            <h2>Quick Example</h2>
+            <div class="code-block"><code>require 'tollmesh'
+
+channel = GRPC::Core::Channel.new('localhost:50051', {})
+stub = Tollmesh::TollMesh::Stub.new(channel)
+
+request = Tollmesh::ConsumeRequest.new(
+  key: 'user:123',
+  limit: 100,
+  window_ms: 60000
+)
+
+response = stub.consume(request)
+puts "Rate limit OK: #{response.ok}"</code></div>
+        </div>
+    </div>
+
+    <footer>
+        <p>&copy; 2026 TollMeshStore. MIT License.</p>
+    </footer>
+
+    <script>
+        function showGuide(language) {
+            // Hide all guides
+            document.querySelectorAll('.guide-section').forEach(el => {
+                el.classList.remove('active');
+            });
+            
+            // Remove active class from all buttons
+            document.querySelectorAll('.tab-btn').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            
+            // Show selected guide
+            document.getElementById(language).classList.add('active');
+            
+            // Add active class to clicked button
+            event.target.classList.add('active');
+        }
+    </script>
+</body>
+</html>

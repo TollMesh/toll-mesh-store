@@ -441,20 +441,7 @@ TollMeshStore is released under the **MIT License**. See [LICENSE](LICENSE) for 
 - **Load Balancing**: O(1) with health-aware selection
 - **Memory**: O(n) where n is number of unique keys
 
----
 
-## 🔮 Roadmap
-
-- [x] Core distributed features (Completed)
-- [x] HTTP API with security features (Completed)
-- [x] Persistence and recovery (Completed)
-- [x] Horizontal scaling (Completed)
-- [ ] Generate client libraries for all languages
-- [ ] Publish to package managers (PyPI, npm, Maven, crates.io)
-- [ ] Build community (Discord, discussions)
-- [ ] Create video tutorials
-- [ ] Write blog posts
-- [ ] Gather feedback and iterate
 
 ---
 

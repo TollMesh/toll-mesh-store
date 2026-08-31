@@ -1,0 +1,40 @@
+name: Publish Node.js SDK to npm
+
+on:
+  push:
+    tags:
+      - 'node-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to npm
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: Install dependencies
+        run: |
+          cd sdks/nodejs/
+          npm ci
+
+      - name: Build
+        run: |
+          cd sdks/nodejs/
+          npm run build
+
+      - name: Publish to npm
+        run: |
+          cd sdks/nodejs/
+          npm publish --access public
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

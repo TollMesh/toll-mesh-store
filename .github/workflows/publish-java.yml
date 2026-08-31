@@ -1,0 +1,39 @@
+name: Publish Java SDK to Maven Central
+
+on:
+  push:
+    tags:
+      - 'java-v*'
+
+permissions:
+  contents: read
+
+jobs:
+  publish:
+    name: Publish to Maven Central
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          java-version: '11'
+          distribution: 'temurin'
+          cache: maven
+
+      - name: Import GPG key
+        run: |
+          mkdir -p ~/.gnupg
+          echo "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | base64 -d | gpg --import --batch
+
+      - name: Deploy to Maven Central
+        run: |
+          cd sdks/java/
+          mvn clean deploy -P release \
+            -Dgpg.passphrase="${{ secrets.MAVEN_GPG_PASSPHRASE }}" \
+            -DsignatureAlgorithm=SHA256withRSA
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}

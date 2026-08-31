@@ -85,20 +85,7 @@ site/
 # IDE settings (personal, not repo)
 .editorconfig.local
 
-# Unnecessary markdown files (keep only essential docs)
-ADVANCED_FEATURES_ROADMAP.md
-AGENTIC_REQUIREMENTS.md
-CACHE_IMPROVEMENTS.md
-CODE_REVIEW.md
-COMPARISON_WITH_REDIS.md
-IMPLEMENTATION_STATUS.md
-COMPLETION_STATUS.md
-FINAL_DELIVERY.md
-MEGA_SUMMARY.md
-SDK_STATUS.md
-
-# Keep in git
+# Exclude all markdown files except README and CONTRIBUTING
+*.md
 !README.md
-!ARCHITECTURE.md
-!MULTI_LANGUAGE_GUIDE.md
-!IMPLEMENTATION_ROADMAP.md
+!CONTRIBUTING.md

@@ -29,7 +29,7 @@ jobs:
 
       - name: Run tests
         run: |
-          cd sdks/python/
+          cd python/
           pytest tests/ -v --cov=tollmeshcache
 
   publish:
@@ -53,15 +53,15 @@ jobs:
 
       - name: Build distribution
         run: |
-          cd sdks/python/
+          cd python/
           python -m build
 
       - name: Check distribution
         run: |
-          cd sdks/python/
+          cd python/
           twine check dist/* --strict
 
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
-          packages-dir: sdks/python/dist/
+          packages-dir: python/dist/

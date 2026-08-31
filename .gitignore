@@ -85,7 +85,8 @@ site/
 # IDE settings (personal, not repo)
 .editorconfig.local
 
-# Exclude all markdown files except README and CONTRIBUTING
+# Exclude all markdown files except README, CONTRIBUTING, and docs/
 *.md
 !README.md
 !CONTRIBUTING.md
+!docs/**/*.md

@@ -6,6 +6,7 @@
 
 Choose your language:
 
+- **[Go](go/)** - Core backend with CRDTs
 - **[Python](python/)** - Async/sync, type hints, retry logic
 - **[Node.js](nodejs/)** - TypeScript, promises, streaming
 - **[Java](java/)** - Async with CompletableFuture

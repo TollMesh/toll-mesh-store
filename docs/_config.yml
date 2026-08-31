@@ -23,6 +23,7 @@ plugins:
 # Navigation structure
 nav:
   - Overview
+  - Go: /docs/go.md
   - Python: /docs/python.md
   - Node.js: /docs/nodejs.md
   - Java: /docs/java.md
@@ -31,4 +32,3 @@ nav:
   - C#: /docs/csharp.md
   - PHP: /docs/php.md
   - API: /docs/api.md
-  - Architecture: /ARCHITECTURE.md

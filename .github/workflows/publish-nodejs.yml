@@ -22,16 +22,6 @@ jobs:
           node-version: '18'
           registry-url: 'https://registry.npmjs.org'
 
-      - name: Install dependencies
-        run: |
-          cd sdks/nodejs/
-          npm ci
-
-      - name: Build
-        run: |
-          cd sdks/nodejs/
-          npm run build
-
       - name: Publish to npm
         run: |
           cd sdks/nodejs/

@@ -35,6 +35,6 @@ jobs:
       - name: Publish to npm
         run: |
           cd sdks/nodejs/
-          npm publish --access public
+          npm publish --access public --ignore-scripts
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -1,34 +1,54 @@
 title: TollMeshCache
-description: Distributed CRDT-based caching and coordination layer
-baseurl: /store
-url: https://toll-mesh.github.io
-repository: toll-mesh/store
+description: Production-ready distributed caching and rate limiting with 7-language SDK support
+baseurl: /toll-mesh-store
+url: https://tollmesh.github.io
+repository: TollMesh/toll-mesh-store
 
 remote_theme: just-the-docs/just-the-docs
 
 color_scheme: dark
+logo: "/assets/logo.png"
 
+# Search configuration
 search_enabled: true
 search.heading_level: 2
+search.previews: 2
+search.preview_words_before: 5
+search.preview_words_after: 10
 
-footer_content: "Copyright &copy; 2024 TollMesh. <a href=\"https://github.com/toll-mesh/store/blob/main/LICENSE\">Licensed under Apache 2.0</a>"
+# Footer
+footer_content: "Copyright &copy; 2024 TollMesh. <a href=\"https://github.com/TollMesh/toll-mesh-store/blob/main/LICENSE\">Licensed under Apache 2.0</a> | <a href=\"https://github.com/TollMesh/toll-mesh-store\">GitHub</a>"
 
-nav_order: 1
-has_children: false
-
-plugins:
-  - jekyll-remote-theme
-  - jekyll-seo-tag
+# Analytics (optional)
+ga_measurement_id: ""
 
 # Navigation structure
 nav:
-  - Overview
-  - Go: /docs/go.md
-  - Python: /docs/python.md
-  - Node.js: /docs/nodejs.md
-  - Java: /docs/java.md
-  - Rust: /docs/rust.md
-  - Ruby: /docs/ruby.md
-  - C#: /docs/csharp.md
-  - PHP: /docs/php.md
-  - API: /docs/api.md
+  - Home: /docs/index.md
+  - Language SDKs:
+    - Go Backend: /docs/go.md
+    - Python: /docs/python.md
+    - Node.js: /docs/nodejs.md
+    - Java: /docs/java.md
+    - Rust: /docs/rust.md
+    - Ruby: /docs/ruby.md
+    - C#: /docs/csharp.md
+    - PHP: /docs/php.md
+  - Reference:
+    - API Reference: /docs/api-reference.md
+    - vs Redis: /docs/vs-redis.md
+
+# Markdown settings
+markdown: kramdown
+kramdown:
+  input: GFM
+  syntax_highlighter: rouge
+  syntax_highlighter_opts:
+    block:
+      line_numbers: true
+
+# Plugins
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+  - jekyll-sitemap

@@ -22,21 +22,8 @@ footer_content: "Copyright &copy; 2024 TollMesh. <a href=\"https://github.com/To
 # Analytics (optional)
 ga_measurement_id: ""
 
-# Navigation structure
-nav:
-  - Home: /docs/index.md
-  - Language SDKs:
-    - Go Backend: /docs/go.md
-    - Python: /docs/python.md
-    - Node.js: /docs/nodejs.md
-    - Java: /docs/java.md
-    - Rust: /docs/rust.md
-    - Ruby: /docs/ruby.md
-    - C#: /docs/csharp.md
-    - PHP: /docs/php.md
-  - Reference:
-    - API Reference: /docs/api-reference.md
-    - vs Redis: /docs/vs-redis.md
+# Navigation - auto-discovered by just-the-docs based on nav_order frontmatter
+# All .md files will be automatically discovered and ordered by nav_order
 
 # Markdown settings
 markdown: kramdown

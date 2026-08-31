@@ -1,5 +1,5 @@
 {
-  "name": "tollmeshcache",
+  "name": "@tollmesh/tollmeshcache",
   "version": "1.0.0",
   "description": "Node.js/TypeScript SDK for TollMeshCache - Distributed CRDT-based caching",
   "main": "dist/index.js",

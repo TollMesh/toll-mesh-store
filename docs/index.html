@@ -3,17 +3,16 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TollMeshCache - Distributed Rate Limiting & Caching</title>
+    <title>TollMeshCache - Complete Distributed System</title>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             color: #333;
             background: #fff;
         }
 
-        /* Header */
         .header {
             background: #fff;
             border-bottom: 1px solid #e5e5e5;
@@ -39,6 +38,7 @@
             display: flex;
             gap: 0;
             list-style: none;
+            overflow-x: auto;
         }
         .nav-tabs li a {
             display: block;
@@ -47,8 +47,9 @@
             color: #666;
             border-bottom: 3px solid transparent;
             transition: all 0.3s;
-            font-size: 0.9em;
+            font-size: 0.85em;
             font-weight: 500;
+            white-space: nowrap;
         }
         .nav-tabs li a:hover {
             color: #000;
@@ -59,14 +60,12 @@
             border-bottom-color: #667eea;
         }
 
-        /* Main */
         .container {
             max-width: 1000px;
             margin: 0 auto;
             padding: 40px 20px;
         }
 
-        /* Hero */
         .hero {
             text-align: center;
             margin-bottom: 60px;
@@ -80,11 +79,25 @@
         .hero p {
             font-size: 1.2em;
             color: #666;
-            max-width: 600px;
+            max-width: 700px;
             margin: 0 auto 30px;
         }
+        .badges {
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+            flex-wrap: wrap;
+            margin-bottom: 40px;
+        }
+        .badge {
+            background: #f0f4ff;
+            color: #667eea;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+        }
 
-        /* Content */
         .section {
             display: none;
         }
@@ -114,10 +127,7 @@
             color: #333;
         }
 
-        p {
-            margin-bottom: 15px;
-            color: #555;
-        }
+        p { margin-bottom: 15px; color: #555; }
 
         pre {
             background: #f5f5f5;
@@ -127,7 +137,7 @@
             overflow-x: auto;
             margin: 15px 0;
             font-family: 'Courier New', monospace;
-            font-size: 0.9em;
+            font-size: 0.85em;
             line-height: 1.4;
         }
 
@@ -145,14 +155,8 @@
             color: #333;
         }
 
-        ul, ol {
-            margin-left: 20px;
-            margin-bottom: 15px;
-        }
-
-        li {
-            margin-bottom: 8px;
-        }
+        ul, ol { margin-left: 20px; margin-bottom: 15px; }
+        li { margin-bottom: 8px; }
 
         table {
             width: 100%;
@@ -172,16 +176,12 @@
             color: #333;
         }
 
-        .note {
+        .feature-box {
             background: #f0f4ff;
             border-left: 4px solid #667eea;
-            padding: 15px;
+            padding: 20px;
             margin: 20px 0;
             border-radius: 4px;
-        }
-
-        .note strong {
-            color: #667eea;
         }
 
         .use-case {
@@ -197,7 +197,32 @@
             color: #667eea;
         }
 
-        /* Footer */
+        .lang-selector {
+            display: flex;
+            gap: 10px;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+
+        .lang-selector button {
+            padding: 8px 16px;
+            border: 1px solid #ddd;
+            background: #fff;
+            cursor: pointer;
+            border-radius: 4px;
+            font-weight: 500;
+            transition: all 0.3s;
+        }
+
+        .lang-selector button.active {
+            background: #667eea;
+            color: white;
+            border-color: #667eea;
+        }
+
+        .lang-code { display: none; }
+        .lang-code.active { display: block; }
+
         footer {
             border-top: 1px solid #e5e5e5;
             margin-top: 60px;
@@ -212,14 +237,10 @@
             text-decoration: none;
         }
 
-        footer a:hover {
-            text-decoration: underline;
-        }
-
         @media (max-width: 768px) {
             .hero h1 { font-size: 2em; }
-            .nav-tabs { flex-wrap: wrap; }
-            .nav-tabs li a { padding: 8px 12px; font-size: 0.8em; }
+            .nav-tabs { font-size: 0.8em; }
+            .nav-tabs li a { padding: 8px 10px; }
         }
     </style>
 </head>
@@ -229,15 +250,15 @@
             <div class="logo">TollMeshCache</div>
             <ul class="nav-tabs">
                 <li><a href="#overview" class="nav-link active" data-page="overview">Overview</a></li>
-                <li><a href="#go" class="nav-link" data-page="go">Go</a></li>
-                <li><a href="#python" class="nav-link" data-page="python">Python</a></li>
-                <li><a href="#nodejs" class="nav-link" data-page="nodejs">Node.js</a></li>
-                <li><a href="#java" class="nav-link" data-page="java">Java</a></li>
-                <li><a href="#rust" class="nav-link" data-page="rust">Rust</a></li>
-                <li><a href="#ruby" class="nav-link" data-page="ruby">Ruby</a></li>
-                <li><a href="#csharp" class="nav-link" data-page="csharp">C#</a></li>
-                <li><a href="#php" class="nav-link" data-page="php">PHP</a></li>
-                <li><a href="#api" class="nav-link" data-page="api">API</a></li>
+                <li><a href="#rate-limiting" class="nav-link" data-page="rate-limiting">Rate Limiting</a></li>
+                <li><a href="#replay" class="nav-link" data-page="replay">Replay Protection</a></li>
+                <li><a href="#caching" class="nav-link" data-page="caching">Caching</a></li>
+                <li><a href="#pubsub" class="nav-link" data-page="pubsub">Pub/Sub</a></li>
+                <li><a href="#transactions" class="nav-link" data-page="transactions">Transactions</a></li>
+                <li><a href="#persistence" class="nav-link" data-page="persistence">Persistence</a></li>
+                <li><a href="#search" class="nav-link" data-page="search">Search</a></li>
+                <li><a href="#scripting" class="nav-link" data-page="scripting">Lua Scripting</a></li>
+                <li><a href="#api" class="nav-link" data-page="api">API Ref</a></li>
             </ul>
         </div>
     </div>
@@ -247,666 +268,836 @@
         <div id="overview" class="section active">
             <div class="hero">
                 <h1>TollMeshCache</h1>
-                <p>Distributed rate limiting, replay protection, and caching for production systems. Zero-config peer-to-peer coordination using CRDTs.</p>
+                <p>Complete distributed system with rate limiting, pub/sub, transactions, search, persistence, and more. Zero-config peer-to-peer coordination using CRDTs.</p>
+                <div class="badges">
+                    <span class="badge">✅ Rate Limiting</span>
+                    <span class="badge">✅ Pub/Sub</span>
+                    <span class="badge">✅ Transactions</span>
+                    <span class="badge">✅ Persistence</span>
+                    <span class="badge">✅ Search</span>
+                    <span class="badge">✅ Replication</span>
+                    <span class="badge">✅ Metrics</span>
+                </div>
             </div>
 
-            <h2>What is TollMeshCache?</h2>
-            <p>TollMeshCache is a distributed coordination layer built on Conflict-Free Replicated Data Types (CRDTs) that provides three core capabilities:</p>
-            <ul>
-                <li><strong>Rate Limiting:</strong> Distributed token bucket that works across cluster nodes without a central coordinator</li>
-                <li><strong>Replay Protection:</strong> Automatic nonce tracking to prevent duplicate requests/transactions</li>
-                <li><strong>Distributed Caching:</strong> TTL-based cache that automatically syncs state across nodes</li>
-            </ul>
-
-            <p>Unlike Redis or Memcached, TollMeshCache requires no central server, no configuration, and automatically recovers from node failures.</p>
-
-            <h2>Use Cases</h2>
-
-            <div class="use-case">
-                <h4>API Rate Limiting</h4>
-                <p>Protect APIs from abuse without running a centralized rate limiting service. Each node can make independent decisions using CRDT consensus.</p>
-                <p><strong>Example:</strong> Limit users to 100 requests/minute across a distributed API cluster. When User A hits their limit on Node 1, they're also rate-limited on Nodes 2-3.</p>
-            </div>
-
-            <div class="use-case">
-                <h4>Payment Deduplication</h4>
-                <p>Prevent duplicate charges from retried payment requests. Track transaction IDs globally without requiring synchronous coordination.</p>
-                <p><strong>Example:</strong> User retries payment 3 times in quick succession. First request processes. Retries 2-3 detected as replays and rejected automatically.</p>
-            </div>
-
-            <div class="use-case">
-                <h4>Session Caching</h4>
-                <p>Cache session data across multiple servers with automatic TTL expiration and consistency.</p>
-                <p><strong>Example:</strong> User logs in on Server A, data cached. Request routed to Server B - session found in cache. No database calls needed.</p>
-            </div>
-
-            <div class="use-case">
-                <h4>Edge Caching</h4>
-                <p>Distribute cache across edge nodes globally. State automatically converges without master-replica complexity.</p>
-                <p><strong>Example:</strong> Cache user preferences at 5 edge locations worldwide. Update in one location, auto-syncs to others.</p>
-            </div>
-
-            <div class="use-case">
-                <h4>DDOS Mitigation</h4>
-                <p>Rate limit per IP/region across entire infrastructure instantly.</p>
-                <p><strong>Example:</strong> Suspicious IP makes 1000 requests/sec. Detection on Node 1 instantly affects rate limits on all nodes.</p>
-            </div>
-
-            <h2>How It Works</h2>
-            <h3>CRDT-Based Coordination</h3>
-            <p>TollMeshCache uses Conflict-Free Replicated Data Types (CRDTs) to ensure all nodes converge to the same state without consensus algorithms.</p>
-            <ul>
-                <li><strong>GCounter:</strong> Grow-only counter for rate limiting (sum of all node counts = current limit)</li>
-                <li><strong>GSet:</strong> Grow-only set for replay protection (distributed nonce tracking)</li>
-                <li><strong>ExpiringSet:</strong> TTL-based set for caching (auto-cleanup after expiration)</li>
-            </ul>
-
-            <p>No master election, no consensus required, no configuration needed. Nodes simply exchange state gossip periodically.</p>
-
-            <h2>Architecture</h2>
+            <h2>Feature Matrix</h2>
             <table>
                 <tr>
-                    <th>Component</th>
-                    <th>Purpose</th>
-                    <th>Scalability</th>
+                    <th>Feature</th>
+                    <th>TollMeshCache</th>
+                    <th>Status</th>
+                    <th>Details</th>
                 </tr>
                 <tr>
-                    <td>GCounter</td>
-                    <td>Distributed rate limiting</td>
-                    <td>O(1) per operation, O(n) memory (n=nodes)</td>
+                    <td>Rate Limiting</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>Distributed token bucket, no central coordinator</td>
                 </tr>
                 <tr>
-                    <td>GSet</td>
-                    <td>Replay protection</td>
-                    <td>O(1) per operation, O(m) memory (m=unique nonces)</td>
+                    <td>Replay Protection</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>CRDT-based nonce tracking, auto cleanup</td>
                 </tr>
                 <tr>
-                    <td>ExpiringSet</td>
-                    <td>TTL caching</td>
-                    <td>O(1) per operation, O(k) memory (k=cache keys)</td>
+                    <td>Caching</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>TTL-based, session-aware, distributed</td>
                 </tr>
                 <tr>
-                    <td>Gossip Protocol</td>
-                    <td>State synchronization</td>
-                    <td>O(log n) communication cost</td>
+                    <td>Pub/Sub</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>Pattern matching, message history, DLQ</td>
+                </tr>
+                <tr>
+                    <td>Transactions</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>ACID with commit/rollback</td>
+                </tr>
+                <tr>
+                    <td>Persistence</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>WAL + snapshots for recovery</td>
+                </tr>
+                <tr>
+                    <td>Lua Scripting</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>Custom script execution with registry</td>
+                </tr>
+                <tr>
+                    <td>Search</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>BM25 full-text + vector embeddings</td>
+                </tr>
+                <tr>
+                    <td>Replication</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>CRDT-based, automatic convergence</td>
+                </tr>
+                <tr>
+                    <td>Sharding</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>Horizontal partitioning for scale</td>
+                </tr>
+                <tr>
+                    <td>Metrics</td>
+                    <td>✅</td>
+                    <td>Production</td>
+                    <td>Real-time analytics, Prometheus-ready</td>
+                </tr>
+                <tr>
+                    <td>Job Queues</td>
+                    <td>❌</td>
+                    <td>In Progress</td>
+                    <td>Background job processing (coming soon)</td>
+                </tr>
+                <tr>
+                    <td>Sorted Sets</td>
+                    <td>❌</td>
+                    <td>In Progress</td>
+                    <td>Range queries, leaderboards (coming soon)</td>
+                </tr>
+                <tr>
+                    <td>Streams</td>
+                    <td>❌</td>
+                    <td>In Progress</td>
+                    <td>Event logs with consumer groups (coming soon)</td>
                 </tr>
             </table>
 
-            <h2>Language Support</h2>
-            <p>TollMeshCache provides SDKs for 7 major languages, all with identical APIs:</p>
+            <h2>7 Language SDKs</h2>
+            <p>Identical APIs across all languages:</p>
             <ul>
-                <li><strong>Go:</strong> Core backend implementation with CRDTs</li>
-                <li><strong>Python:</strong> Async/sync clients with httpx</li>
-                <li><strong>Node.js:</strong> TypeScript with streaming support</li>
-                <li><strong>Java:</strong> OkHttp3 with CompletableFuture async</li>
-                <li><strong>Rust:</strong> Tokio async with type-safe APIs</li>
-                <li><strong>Ruby:</strong> Idiomatic patterns with HTTPClient</li>
-                <li><strong>C#:</strong> Native async/await for .NET</li>
-                <li><strong>PHP:</strong> Guzzle-based with PSR compliance</li>
+                <li><strong>Python:</strong> Sync/async with httpx</li>
+                <li><strong>Node.js:</strong> Full TypeScript support</li>
+                <li><strong>Java:</strong> OkHttp3 + CompletableFuture</li>
+                <li><strong>Rust:</strong> Tokio async, type-safe</li>
+                <li><strong>Ruby:</strong> HTTPClient, idiomatic</li>
+                <li><strong>C#:</strong> Native async/await</li>
+                <li><strong>PHP:</strong> Guzzle, PSR-compliant</li>
+            </ul>
+
+            <h2>Architecture</h2>
+            <p>Built on CRDTs (Conflict-Free Replicated Data Types) for automatic state convergence without consensus:</p>
+            <ul>
+                <li><strong>GCounter:</strong> Grow-only counter (rate limiting)</li>
+                <li><strong>GSet:</strong> Grow-only set (replay protection)</li>
+                <li><strong>ExpiringSet:</strong> TTL-based set (caching)</li>
+                <li><strong>Gossip Protocol:</strong> P2P state synchronization</li>
+                <li><strong>Failure Detection:</strong> Automatic node failure handling</li>
             </ul>
         </div>
 
-        <!-- PYTHON SDK -->
-        <div id="python" class="section">
-            <h2>Python SDK</h2>
+        <!-- RATE LIMITING -->
+        <div id="rate-limiting" class="section">
+            <h2>Rate Limiting</h2>
+            <p>Distributed token bucket algorithm working peer-to-peer without central coordinator.</p>
 
-            <h3>Installation</h3>
-            <pre><code>pip install tollmeshcache
-pip install tollmeshcache[async]  # For async support</code></pre>
+            <h3>Use Cases</h3>
+            <div class="use-case">
+                <h4>API Rate Limiting</h4>
+                <p>Protect APIs from abuse. Each node independently enforces limits using CRDT consensus.</p>
+            </div>
+            <div class="use-case">
+                <h4>DDOS Protection</h4>
+                <p>Per-IP rate limiting across entire cluster. Detection on one node affects all.</p>
+            </div>
+            <div class="use-case">
+                <h4>Request Throttling</h4>
+                <p>Smooth out traffic spikes. Limit requests/minute/hour across distributed system.</p>
+            </div>
 
-            <h3>Getting Started</h3>
-            <p>Sync client for traditional blocking code:</p>
-            <pre><code>from tollmeshcache import Client, ClientConfig
+            <h3>Examples</h3>
+            <div class="lang-selector">
+                <button class="active" data-lang="python">Python</button>
+                <button data-lang="nodejs">Node.js</button>
+                <button data-lang="java">Java</button>
+                <button data-lang="rust">Rust</button>
+                <button data-lang="ruby">Ruby</button>
+                <button data-lang="csharp">C#</button>
+                <button data-lang="php">PHP</button>
+            </div>
+
+            <div class="lang-code python active">
+                <pre><code>from tollmeshcache import Client
 from datetime import timedelta
 
-config = ClientConfig(host='localhost', port=8080)
-client = Client(config)
+client = Client()
 
-# Rate limiting
+# Rate limit: 100 requests per minute
 result = client.consume('user-123', limit=100, window=timedelta(minutes=1))
+
 if not result['ok']:
-    raise Exception('Rate limited')
+    # Rate limited - reject request
+    return {'status': 429, 'error': 'Too many requests'}
 
-# Replay protection
-if client.seen('txn-abc123', ttl=timedelta(hours=24))['seen']:
-    raise Exception('Duplicate transaction')
+# Request allowed
+process_request()</code></pre>
+            </div>
 
-# Caching
-client.cache_set('users', 'user-123', user_json, ttl=timedelta(hours=1))
-value, exists = client.cache_get('users', 'user-123')</code></pre>
+            <div class="lang-code nodejs">
+                <pre><code>import { Client } from 'tollmeshcache';
 
-            <h3>Async Usage</h3>
-            <p>Async client using httpx for high-concurrency scenarios:</p>
-            <pre><code>import asyncio
-from tollmeshcache import AsyncClient, ClientConfig
+const client = new Client();
 
-async def main():
-    config = ClientConfig(host='localhost', port=8080)
-    async with AsyncClient(config) as client:
-        # All methods are async
-        result = await client.consume('user-123', 100, timedelta(minutes=1))
-        seen = await client.seen('txn-abc123', timedelta(hours=24))
-        await client.cache_set('users', 'user-123', user_json, timedelta(hours=1))
+// Rate limit: 100 requests per minute
+const result = await client.consume('user-123', 100, 60000);
 
-asyncio.run(main())</code></pre>
+if (!result.ok) {
+    // Rate limited
+    res.status(429).json({ error: 'Too many requests' });
+} else {
+    // Request allowed
+    processRequest();
+}</code></pre>
+            </div>
 
-            <h3>Real-World Examples</h3>
+            <div class="lang-code java">
+                <pre><code>Client client = new Client();
 
-            <h4>API Rate Limiting</h4>
-            <pre><code>from flask import Flask, request, jsonify
-from tollmeshcache import Client
-from datetime import timedelta
+// Rate limit: 100 requests per minute
+ConsumeResult result = client.consume(
+    "user-123",
+    100,
+    Duration.ofMinutes(1)
+);
 
-app = Flask(__name__)
-cache = Client()
+if (!result.ok) {
+    response.setStatus(429);
+    response.getWriter().write("Too many requests");
+} else {
+    processRequest();
+}</code></pre>
+            </div>
 
-@app.before_request
-def check_rate_limit():
-    client_ip = request.remote_addr
-    user_id = request.args.get('user_id')
+            <div class="lang-code rust">
+                <pre><code>let client = Client::new(config)?;
 
-    # Rate limit: 1000 requests per minute per user
-    result = cache.consume(f'api:{user_id}', limit=1000, window=timedelta(minutes=1))
+// Rate limit: 100 requests per minute
+let result = client.consume(
+    "user-123",
+    100,
+    Duration::from_secs(60)
+).await?;
 
-    if not result['ok']:
-        return jsonify({'error': 'Rate limited'}), 429
+if !result.ok {
+    return Err("Rate limited".into());
+}
 
-    # Continue processing
-    g.rate_limit = result</code></pre>
+process_request();</code></pre>
+            </div>
 
-            <h4>Payment Idempotency</h4>
-            <pre><code>import uuid
-from datetime import timedelta
+            <div class="lang-code ruby">
+                <pre><code>client = TollMeshCache::Client.new
 
-def charge_card(user_id, amount, idempotency_key=None):
-    if not idempotency_key:
-        idempotency_key = str(uuid.uuid4())
+# Rate limit: 100 requests per minute
+result = client.consume('user-123', 100, 60000)
 
-    # Check if already processed
-    if cache.seen(f'payment:{idempotency_key}', ttl=timedelta(days=1))['seen']:
-        return {'error': 'Duplicate payment', 'status': 'already_processed'}
+if !result[:ok]
+  return { status: 429, error: 'Too many requests' }
+end
 
-    # Process payment
-    result = payment_provider.charge(user_id, amount)
+process_request</code></pre>
+            </div>
 
-    # Mark as seen for future retries
-    return result</code></pre>
+            <div class="lang-code csharp">
+                <pre><code>var client = new Client();
 
-            <h4>Session Caching</h4>
-            <pre><code>import json
-from datetime import timedelta
+// Rate limit: 100 requests per minute
+var result = await client.ConsumeAsync(
+    "user-123",
+    100,
+    TimeSpan.FromMinutes(1)
+);
 
-def get_session(session_id):
-    # Try cache first
-    cached, exists = cache.cache_get('sessions', session_id)
-    if exists:
-        return json.loads(cached)
+if (!result.Ok) {
+    return StatusCode(429, "Too many requests");
+}
 
-    # Cache miss - fetch from DB
-    session = db.sessions.find_one({'_id': session_id})
+ProcessRequest();</code></pre>
+            </div>
 
-    # Store in distributed cache
-    cache.cache_set('sessions', session_id, json.dumps(session), ttl=timedelta(hours=1))
+            <div class="lang-code php">
+                <pre><code>$client = new Client();
 
-    return session</code></pre>
+// Rate limit: 100 requests per minute
+$result = $client->consume('user-123', 100, 60000);
 
-            <h3>Configuration</h3>
-            <pre><code>config = ClientConfig(
-    host='localhost',              # Server host
-    port=8080,                    # Server port
-    timeout=5.0,                  # Request timeout in seconds
-    verify_ssl=True,              # Verify SSL certificates
-    api_key=None,                 # Optional API key for auth
-    http_scheme='http',           # http or https
-    max_retries=3,                # Retry failed requests
-    retry_backoff=1.0,            # Exponential backoff multiplier
-    connection_pool_size=10       # HTTP connection pool size
-)</code></pre>
-
-            <h3>Error Handling</h3>
-            <pre><code>from tollmeshcache import TollMeshError, RateLimitError, ReplayError
-
-try:
-    result = cache.consume('key', 100, timedelta(minutes=1))
-except RateLimitError as e:
-    # Handle rate limit specifically
-    print(f'Rate limited: {e.message}')
-except ReplayError as e:
-    # Handle replay detection
-    print(f'Replay detected: {e.message}')
-except TollMeshError as e:
-    # Handle other errors
-    print(f'Error {e.code}: {e.message}')</code></pre>
+if (!$result['ok']) {
+    http_response_code(429);
+    echo json_encode(['error' => 'Too many requests']);
+} else {
+    processRequest();
+}</code></pre>
+            </div>
 
             <h3>Performance</h3>
             <table>
                 <tr>
-                    <th>Operation</th>
-                    <th>P50 Latency</th>
-                    <th>P99 Latency</th>
-                    <th>Throughput</th>
+                    <th>Metric</th>
+                    <th>Value</th>
                 </tr>
                 <tr>
-                    <td>consume()</td>
-                    <td>&lt;1ms</td>
-                    <td>5-10ms</td>
-                    <td>50k ops/sec</td>
+                    <td>Throughput (per node)</td>
+                    <td>50,000 ops/sec</td>
                 </tr>
                 <tr>
-                    <td>seen()</td>
+                    <td>P50 Latency</td>
                     <td>&lt;1ms</td>
-                    <td>5-10ms</td>
-                    <td>50k ops/sec</td>
                 </tr>
                 <tr>
-                    <td>cache_get/set</td>
-                    <td>&lt;1ms</td>
+                    <td>P99 Latency</td>
                     <td>5-10ms</td>
-                    <td>50k ops/sec</td>
+                </tr>
+                <tr>
+                    <td>Memory per limit</td>
+                    <td>O(1)</td>
                 </tr>
             </table>
         </div>
 
-        <!-- NODEJS SDK -->
-        <div id="nodejs" class="section">
-            <h2>Node.js/TypeScript SDK</h2>
+        <!-- REPLAY PROTECTION -->
+        <div id="replay" class="section">
+            <h2>Replay Protection</h2>
+            <p>Prevent duplicate requests/transactions using distributed nonce tracking.</p>
 
-            <h3>Installation</h3>
-            <pre><code>npm install tollmeshcache
-# or
-yarn add tollmeshcache</code></pre>
+            <h3>Use Cases</h3>
+            <div class="use-case">
+                <h4>Payment Deduplication</h4>
+                <p>Prevent duplicate charges from retried payment requests across cluster.</p>
+            </div>
+            <div class="use-case">
+                <h4>Request Idempotency</h4>
+                <p>Ensure API requests are processed exactly once, even with retries.</p>
+            </div>
+            <div class="use-case">
+                <h4>Webhook Safety</h4>
+                <p>Track webhook delivery IDs to prevent duplicate processing.</p>
+            </div>
 
-            <h3>Getting Started</h3>
-            <pre><code>import { Client, ClientConfig } from 'tollmeshcache';
+            <h3>Examples</h3>
+            <div class="lang-selector">
+                <button class="active" data-lang="python">Python</button>
+                <button data-lang="nodejs">Node.js</button>
+                <button data-lang="java">Java</button>
+                <button data-lang="rust">Rust</button>
+                <button data-lang="ruby">Ruby</button>
+                <button data-lang="csharp">C#</button>
+                <button data-lang="php">PHP</button>
+            </div>
 
-const config = new ClientConfig({
-  host: 'localhost',
-  port: 8080,
-});
+            <div class="lang-code python active">
+                <pre><code>import uuid
+from datetime import timedelta
 
-const client = new Client(config);
+# Check if transaction already processed
+txn_id = request.headers.get('idempotency-key') or str(uuid.uuid4())
 
-// Rate limiting
-const result = await client.consume('user-123', 100, 60000);
-if (!result.ok) {
-  throw new Error('Rate limited');
-}
+if client.seen(f'payment:{txn_id}', ttl=timedelta(days=1))['seen']:
+    # Already processed
+    return {'error': 'Duplicate transaction', 'status': 'already_processed'}
 
-// Replay protection
-if ((await client.seen('txn-abc123', 86400000)).seen) {
-  throw new Error('Duplicate transaction');
-}
+# Process payment
+result = charge_card(user_id, amount)
 
-// Caching
-await client.cacheSet('users', 'user-123', userJson, 3600000);
-const [value, exists] = await client.cacheGet('users', 'user-123');</code></pre>
+# Mark as seen
+return result</code></pre>
+            </div>
 
-            <h3>Express.js Middleware</h3>
-            <pre><code>import express from 'express';
-import { Client } from 'tollmeshcache';
+            <div class="lang-code nodejs">
+                <pre><code>import { v4 as uuidv4 } from 'uuid';
 
-const app = express();
-const cache = new Client();
+// Check if already seen
+const txnId = req.headers['idempotency-key'] || uuidv4();
 
-// Rate limiting middleware
-app.use(async (req, res, next) => {
-  const userId = req.query.user_id || req.ip;
-  const result = await cache.consume(`api:${userId}`, 1000, 60000);
-
-  if (!result.ok) {
-    return res.status(429).json({ error: 'Rate limited' });
-  }
-
-  res.set('X-RateLimit-Remaining', result.remaining);
-  next();
-});
-
-app.get('/api/data', (req, res) => {
-  res.json({ data: 'success' });
-});</code></pre>
-
-            <h3>Streaming Support</h3>
-            <p>For large cache values, use streaming to avoid memory issues:</p>
-            <pre><code>import { streamToBuffer, bufferToStream } from 'tollmeshcache';
-import fs from 'fs';
-
-// Stream file into cache
-const fileStream = fs.createReadStream('large-file.bin');
-const buffer = await streamToBuffer(fileStream);
-await client.cacheSet('files', 'large-file', buffer, 3600000);
-
-// Stream from cache to file
-const cached = await client.cacheGet('files', 'large-file');
-const outStream = bufferToStream(cached[0]);
-outStream.pipe(fs.createWriteStream('output.bin'));</code></pre>
-
-            <h3>Type Safety</h3>
-            <pre><code>interface ConsumeResult {
-  ok: boolean;
-  remaining: number;
-  reset_at: number;
-}
-
-interface SeenResult {
-  seen: boolean;
-}
-
-interface CacheValue {
-  value: Buffer;
-  exists: boolean;
+if ((await client.seen(`payment:${txnId}`, 86400000)).seen) {
+    // Already processed
+    res.status(200).json({ error: 'Duplicate', status: 'already_processed' });
+} else {
+    // Process payment
+    const result = await chargeCard(userId, amount);
+    res.json(result);
 }</code></pre>
+            </div>
 
-            <h3>Real-World Examples</h3>
+            <div class="lang-code java">
+                <pre><code>String txnId = request.getHeader("idempotency-key");
+if (txnId == null) txnId = UUID.randomUUID().toString();
 
-            <h4>GraphQL Rate Limiting</h4>
-            <pre><code>import { ApolloServer } from 'apollo-server-express';
+if (client.seen(
+    "payment:" + txnId,
+    Duration.ofDays(1)
+).seen) {
+    response.setStatus(200);
+    response.getWriter().write("Already processed");
+} else {
+    ChargeResult result = chargeCard(userId, amount);
+    response.getWriter().write(toJson(result));
+}</code></pre>
+            </div>
 
-const server = new ApolloServer({
-  typeDefs,
-  resolvers,
-  context: async ({ req }) => {
-    const userId = req.user?.id || req.ip;
-    const result = await cache.consume(`gql:${userId}`, 100, 60000);
+            <div class="lang-code rust">
+                <pre><code>let txn_id = req.headers
+    .get("idempotency-key")
+    .map(|v| v.to_string())
+    .unwrap_or_else(|| Uuid::new_v4().to_string());
 
-    return {
-      user: req.user,
-      rateLimit: result,
-      isRateLimited: !result.ok
-    };
-  }
-});</code></pre>
+if client.seen(
+    &format!("payment:{}", txn_id),
+    Duration::from_secs(86400)
+).await?.seen {
+    // Already processed
+    return Ok("Already processed".into());
+}
 
-            <h4>Payment Webhook Idempotency</h4>
-            <pre><code>app.post('/webhook/payment', async (req, res) => {
-  const webhookId = req.body.id;
-  const idempotencyKey = req.headers['idempotency-key'];
+// Process payment
+let result = charge_card(user_id, amount).await?;
+Ok(result)</code></pre>
+            </div>
 
-  // Prevent duplicate processing
-  if ((await cache.seen(`webhook:${idempotencyKey}`, 86400000)).seen) {
-    return res.status(200).json({ status: 'already_processed' });
-  }
+            <div class="lang-code ruby">
+                <pre><code>txn_id = request.headers['idempotency-key'] || SecureRandom.uuid
 
-  // Process payment
-  const result = await processPayment(req.body);
+if client.seen("payment:#{txn_id}", 86400000)[:seen]
+  # Already processed
+  render json: { error: 'Duplicate', status: 'already_processed' }
+else
+  # Process payment
+  result = charge_card(user_id, amount)
+  render json: result
+end</code></pre>
+            </div>
 
-  res.json(result);
-});</code></pre>
+            <div class="lang-code csharp">
+                <pre><code>string txnId = req.Headers["idempotency-key"] ?? Guid.NewGuid().ToString();
+
+if ((await client.SeenAsync(
+    $"payment:{txnId}",
+    TimeSpan.FromDays(1)
+)).Seen) {
+    // Already processed
+    return Ok(new { error = "Duplicate", status = "already_processed" });
+}
+
+// Process payment
+var result = await ChargeCard(userId, amount);
+return Ok(result);</code></pre>
+            </div>
+
+            <div class="lang-code php">
+                <pre><code>$txnId = $_SERVER['HTTP_IDEMPOTENCY_KEY'] ?? bin2hex(random_bytes(16));
+
+if ($client->seen("payment:$txnId", 86400000)['seen']) {
+    // Already processed
+    http_response_code(200);
+    echo json_encode(['error' => 'Duplicate', 'status' => 'already_processed']);
+} else {
+    // Process payment
+    $result = chargeCard($userId, $amount);
+    echo json_encode($result);
+}</code></pre>
+            </div>
         </div>
 
-        <!-- GO BACKEND -->
-        <div id="go" class="section">
-            <h2>Go Backend</h2>
-            <p>TollMeshCache core is implemented in Go with efficient CRDT data structures.</p>
+        <!-- CACHING -->
+        <div id="caching" class="section">
+            <h2>Caching</h2>
+            <p>Distributed TTL-based caching with automatic session management.</p>
 
-            <h3>Core Components</h3>
-            <h4>GCounter - Distributed Rate Limiting</h4>
-            <pre><code>counter := core.NewGCounter("node-1")
-counter.Increment(5)
-total := counter.Value() // Sum across all nodes</code></pre>
+            <h3>Use Cases</h3>
+            <div class="use-case">
+                <h4>Session Storage</h4>
+                <p>Store user sessions across multiple servers with automatic expiration.</p>
+            </div>
+            <div class="use-case">
+                <h4>Query Result Caching</h4>
+                <p>Cache database query results to reduce database load.</p>
+            </div>
+            <div class="use-case">
+                <h4>User Data Cache</h4>
+                <p>Cache user profiles, settings, preferences with TTL.</p>
+            </div>
 
-            <h4>GSet - Replay Protection</h4>
-            <pre><code>set := core.NewGSet()
-set.Add("nonce-123")
-if set.Contains("nonce-123") {
-    // Replay detected
-}</code></pre>
+            <h3>Examples</h3>
+            <div class="lang-selector">
+                <button class="active" data-lang="python">Python</button>
+                <button data-lang="nodejs">Node.js</button>
+                <button data-lang="java">Java</button>
+                <button data-lang="rust">Rust</button>
+                <button data-lang="ruby">Ruby</button>
+                <button data-lang="csharp">C#</button>
+                <button data-lang="php">PHP</button>
+            </div>
 
-            <h3>MeshStore API</h3>
-            <pre><code>result, err := meshStore.Consume(ctx, "user-123", 100, 1*time.Minute)
-if !result.OK {
-    // Rate limited
-}
+            <div class="lang-code python active">
+                <pre><code>import json
+from datetime import timedelta
 
-seen, err := meshStore.Seen(ctx, "txn-123", 24*time.Hour)
-if seen {
-    // Duplicate detected
-}
+def get_user(user_id):
+    # Try cache first
+    cached, exists = client.cache_get('users', user_id)
+    if exists:
+        return json.loads(cached)
 
-meshStore.Set(ctx, "cache", "key-1", []byte("value"), 10*time.Minute)
-value, exists, err := meshStore.Get(ctx, "cache", "key-1")</code></pre>
-        </div>
+    # Cache miss - fetch from database
+    user = db.query(f"SELECT * FROM users WHERE id = {user_id}")
 
-        <!-- JAVA SDK -->
-        <div id="java" class="section">
-            <h2>Java SDK</h2>
+    # Store in cache for 1 hour
+    client.cache_set(
+        'users',
+        user_id,
+        json.dumps(user),
+        ttl=timedelta(hours=1)
+    )
 
-            <h3>Installation</h3>
-            <pre><code>&lt;dependency&gt;
-    &lt;groupId&gt;com.tollmesh&lt;/groupId&gt;
-    &lt;artifactId&gt;tollmeshcache&lt;/artifactId&gt;
-    &lt;version&gt;1.0.0&lt;/version&gt;
-&lt;/dependency&gt;</code></pre>
+    return user</code></pre>
+            </div>
 
-            <h3>Sync Client</h3>
-            <pre><code>ClientConfig config = new ClientConfig()
-    .setHost("localhost")
-    .setPort(8080);
-
-Client client = new Client(config);
-
-ConsumeResult result = client.consume("user-123", 100, Duration.ofMinutes(1));
-if (result.ok) {
-    System.out.println("Allowed. Remaining: " + result.remaining);
-}</code></pre>
-
-            <h3>Async with CompletableFuture</h3>
-            <pre><code>AsyncClient asyncClient = new AsyncClient(config);
-
-asyncClient.consume("user-123", 100, Duration.ofMinutes(1))
-    .thenAccept(result -> {
-        if (result.ok) {
-            System.out.println("Request allowed");
-        }
-    })
-    .exceptionally(error -> {
-        System.err.println("Error: " + error.getMessage());
-        return null;
-    });</code></pre>
-
-            <h3>Spring Boot Integration</h3>
-            <pre><code>@Component
-public class RateLimitInterceptor extends HandlerInterceptorAdapter {
-    @Autowired private Client cache;
-
-    @Override
-    public boolean preHandle(HttpServletRequest request,
-                            HttpServletResponse response,
-                            Object handler) throws Exception {
-        String userId = request.getParameter("user_id");
-        ConsumeResult result = cache.consume(userId, 1000, Duration.ofMinutes(1));
-
-        if (!result.ok) {
-            response.setStatus(429);
-            response.getWriter().write("Rate limited");
-            return false;
-        }
-        return true;
-    }
-}</code></pre>
-        </div>
-
-        <!-- RUST SDK -->
-        <div id="rust" class="section">
-            <h2>Rust SDK</h2>
-
-            <h3>Installation</h3>
-            <pre><code>[dependencies]
-tollmeshcache = "1.0"
-tokio = { version = "1", features = ["full"] }</code></pre>
-
-            <h3>Async/Await</h3>
-            <pre><code>#[tokio::main]
-async fn main() -> Result<(), Box<dyn std::error::Error>> {
-    let config = ClientConfig::new()
-        .with_host("localhost")
-        .with_port(8080);
-
-    let client = Client::new(config)?;
-
-    let result = client.consume("user-123", 100, Duration::from_secs(60)).await?;
-    if result.ok {
-        println!("Request allowed");
+            <div class="lang-code nodejs">
+                <pre><code>async function getUser(userId) {
+    // Try cache first
+    const [cached, exists] = await client.cacheGet('users', userId);
+    if (exists) {
+        return JSON.parse(cached.toString());
     }
 
-    Ok(())
-}</code></pre>
+    // Cache miss - fetch from database
+    const user = await db.query(`SELECT * FROM users WHERE id = ${userId}`);
 
-            <h3>Type-Safe Error Handling</h3>
-            <pre><code>match client.consume("key", 100, Duration::from_secs(60)).await {
-    Ok(result) if result.ok => println!("Allowed: {} remaining", result.remaining),
-    Ok(_) => eprintln!("Rate limited"),
-    Err(TollMeshError::RateLimited) => eprintln!("Rate limit exceeded"),
-    Err(e) => eprintln!("Error: {}", e),
+    // Store in cache for 1 hour
+    await client.cacheSet(
+        'users',
+        userId,
+        JSON.stringify(user),
+        3600000
+    );
+
+    return user;
 }</code></pre>
+            </div>
+
+            <div class="lang-code java">
+                <pre><code>public User getUser(String userId) {
+    // Try cache first
+    CacheValue cached = client.cacheGet("users", userId);
+    if (cached.exists) {
+        return parseJson(cached.value, User.class);
+    }
+
+    // Cache miss - fetch from database
+    User user = db.query("SELECT * FROM users WHERE id = ?", userId);
+
+    // Store in cache for 1 hour
+    client.cacheSet(
+        "users",
+        userId,
+        toJson(user),
+        Duration.ofHours(1)
+    );
+
+    return user;
+}</code></pre>
+            </div>
+
+            <div class="lang-code rust">
+                <pre><code>async fn get_user(user_id: &str) -> Result<User> {
+    // Try cache first
+    let (cached, exists) = client.cache_get("users", user_id).await?;
+    if exists {
+        return Ok(serde_json::from_slice(&cached)?);
+    }
+
+    // Cache miss - fetch from database
+    let user = db.query_user(user_id).await?;
+
+    // Store in cache for 1 hour
+    client.cache_set(
+        "users",
+        user_id,
+        serde_json::to_vec(&user)?,
+        Duration::from_secs(3600)
+    ).await?;
+
+    Ok(user)
+}</code></pre>
+            </div>
+
+            <div class="lang-code ruby">
+                <pre><code>def get_user(user_id)
+  # Try cache first
+  cached, exists = client.cache_get('users', user_id)
+  return JSON.parse(cached) if exists
+
+  # Cache miss - fetch from database
+  user = User.find(user_id)
+
+  # Store in cache for 1 hour
+  client.cache_set(
+    'users',
+    user_id,
+    user.to_json,
+    3600000
+  )
+
+  user
+end</code></pre>
+            </div>
+
+            <div class="lang-code csharp">
+                <pre><code>public async Task<User> GetUser(string userId) {
+    // Try cache first
+    var cached = await client.CacheGetAsync("users", userId);
+    if (cached.Exists) {
+        return JsonConvert.DeserializeObject<User>(cached.Value.ToString());
+    }
+
+    // Cache miss - fetch from database
+    var user = await db.QueryUser(userId);
+
+    // Store in cache for 1 hour
+    await client.CacheSetAsync(
+        "users",
+        userId,
+        JsonConvert.SerializeObject(user),
+        TimeSpan.FromHours(1)
+    );
+
+    return user;
+}</code></pre>
+            </div>
+
+            <div class="lang-code php">
+                <pre><code>function getUser($userId) {
+    // Try cache first
+    list($cached, $exists) = $client->cacheGet('users', $userId);
+    if ($exists) {
+        return json_decode($cached, true);
+    }
+
+    // Cache miss - fetch from database
+    $user = $db->query("SELECT * FROM users WHERE id = ?", [$userId]);
+
+    // Store in cache for 1 hour
+    $client->cacheSet(
+        'users',
+        $userId,
+        json_encode($user),
+        3600000
+    );
+
+    return $user;
+}</code></pre>
+            </div>
         </div>
 
-        <!-- RUBY SDK -->
-        <div id="ruby" class="section">
-            <h2>Ruby SDK</h2>
+        <!-- PUB/SUB -->
+        <div id="pubsub" class="section">
+            <h2>Pub/Sub Messaging</h2>
+            <p>Pattern-based message broadcasting with history and dead-letter queue.</p>
 
-            <h3>Installation</h3>
-            <pre><code>gem 'tollmeshcache'
-bundle install</code></pre>
+            <h3>Features</h3>
+            <ul>
+                <li>Pattern matching (regex support)</li>
+                <li>Message history</li>
+                <li>Dead-letter queue for failed deliveries</li>
+                <li>Multiple subscribers per topic</li>
+                <li>Real-time notifications</li>
+            </ul>
 
-            <h3>Basic Usage</h3>
-            <pre><code>require 'tollmeshcache'
+            <h3>Examples</h3>
+            <div class="lang-selector">
+                <button class="active" data-lang="python">Python</button>
+                <button data-lang="nodejs">Node.js</button>
+                <button data-lang="java">Java</button>
+                <button data-lang="rust">Rust</button>
+                <button data-lang="ruby">Ruby</button>
+                <button data-lang="csharp">C#</button>
+                <button data-lang="php">PHP</button>
+            </div>
 
-config = TollMeshCache::ClientConfig.new(
-  host: 'localhost',
-  port: 8080
+            <div class="lang-code python active">
+                <pre><code># Publisher
+client.publish('order.created', {'order_id': 123, 'total': 99.99})
+
+# Subscriber
+def on_message(message):
+    print(f"Order created: {message['payload']}")
+
+# Subscribe to pattern
+client.subscribe('order.*', on_message)</code></pre>
+            </div>
+
+            <div class="lang-code nodejs">
+                <pre><code>// Publisher
+await client.publish('order.created',
+    JSON.stringify({ order_id: 123, total: 99.99 })
+);
+
+// Subscriber
+client.subscribe('order.*', (message) => {
+    console.log('Order created:', message.payload);
+});</code></pre>
+            </div>
+
+            <div class="lang-code java">
+                <pre><code>// Publisher
+client.publish("order.created",
+    "{\"order_id\": 123, \"total\": 99.99}"
+);
+
+// Subscriber
+client.subscribe("order.*", message -> {
+    System.out.println("Order created: " + message.payload);
+});</code></pre>
+            </div>
+
+            <div class="lang-code rust">
+                <pre><code>// Publisher
+client.publish("order.created",
+    r#"{"order_id": 123, "total": 99.99}"#
+).await?;
+
+// Subscriber
+client.subscribe("order.*", |message| {
+    println!("Order created: {}", message.payload);
+}).await?;</code></pre>
+            </div>
+
+            <div class="lang-code ruby">
+                <pre><code"># Publisher
+client.publish('order.created',
+    {order_id: 123, total: 99.99}.to_json
 )
 
-client = TollMeshCache::Client.new(config)
+# Subscriber
+client.subscribe('order.*') do |message|
+  puts "Order created: #{message[:payload]}"
+end</code></pre>
+            </div>
 
-# Rate limiting
-result = client.consume('user-123', 100, 60000)
-if result[:ok]
-  puts "Request allowed. Remaining: #{result[:remaining]}"
+            <div class="lang-code csharp">
+                <pre><code>// Publisher
+await client.PublishAsync("order.created",
+    JsonConvert.SerializeObject(new { order_id = 123, total = 99.99 })
+);
+
+// Subscriber
+client.Subscribe("order.*", (message) => {
+    Console.WriteLine($"Order created: {message.Payload}");
+});</code></pre>
+            </div>
+
+            <div class="lang-code php">
+                <pre><code>// Publisher
+$client->publish('order.created',
+    json_encode(['order_id' => 123, 'total' => 99.99])
+);
+
+// Subscriber
+$client->subscribe('order.*', function($message) {
+    echo "Order created: " . $message['payload'];
+});</code></pre>
+            </div>
+        </div>
+
+        <!-- TRANSACTIONS -->
+        <div id="transactions" class="section">
+            <h2>ACID Transactions</h2>
+            <p>Full ACID transaction support with commit/rollback.</p>
+
+            <h3>Example</h3>
+            <pre><code>// Begin transaction
+txn = client.begin_transaction()
+
+// Add operations
+txn.add_operation('consume', 'user-123', 100, timedelta(minutes=1))
+txn.add_operation('cache_set', 'orders', 'order-456', order_data)
+txn.add_operation('seen', 'payment-789', timedelta(hours=1))
+
+// Commit or rollback
+if validation_passed:
+    txn.commit()
+else:
+    txn.rollback()</code></pre>
+        </div>
+
+        <!-- PERSISTENCE -->
+        <div id="persistence" class="section">
+            <h2>Persistence</h2>
+            <p>Write-ahead logging (WAL) + snapshots for durability and recovery.</p>
+
+            <h3>Features</h3>
+            <ul>
+                <li>Write-Ahead Logging (WAL) for durability</li>
+                <li>Periodic snapshots for fast recovery</li>
+                <li>Automatic recovery on restart</li>
+                <li>Configurable snapshot intervals</li>
+            </ul>
+
+            <h3>Configuration</h3>
+            <pre><code>persistence = PersistenceEngine(
+    wal_path='/var/log/tollmesh',
+    snapshot_path='/var/data/tollmesh',
+    snapshot_interval=timedelta(minutes=5)
+)</code></pre>
+        </div>
+
+        <!-- SEARCH -->
+        <div id="search" class="section">
+            <h2>Full-Text & Vector Search</h2>
+            <p>Hybrid search combining BM25 full-text search and vector embeddings.</p>
+
+            <h3>Features</h3>
+            <ul>
+                <li>BM25 full-text indexing</li>
+                <li>Vector similarity search</li>
+                <li>Hybrid ranking combining both</li>
+                <li>Metadata filtering</li>
+            </ul>
+
+            <h3>Example</h3>
+            <pre><code>// Index document
+doc = Document(
+    id='doc-1',
+    content='Python tutorial for beginners',
+    vector=[0.1, 0.2, 0.3, ...]  # embeddings
+)
+client.index_document(doc)
+
+// Search
+results = client.search('python tutorial', limit=10)
+# Returns scored and ranked results</code></pre>
+        </div>
+
+        <!-- SCRIPTING -->
+        <div id="scripting" class="section">
+            <h2>Lua Scripting</h2>
+            <p>Custom script execution for complex operations.</p>
+
+            <h3>Example</h3>
+            <pre><code>-- Register script
+script = '''
+if cache_get(KEYS[1]) then
+    return 'exists'
 else
-  puts "Rate limited"
-end</code></pre>
+    cache_set(KEYS[1], ARGV[1], ARGV[2])
+    return 'set'
+end
+'''
 
-            <h3>Rails Integration</h3>
-            <pre><code">class ApplicationController < ActionController::Base
-  before_action :check_rate_limit
+script_id = client.register_script(script)
 
-  private
-
-  def check_rate_limit
-    client = TollMeshCache::Client.new
-    result = client.consume("#{current_user.id}", 100, 60000)
-
-    unless result[:ok]
-      render json: { error: 'Rate limited' }, status: 429
-    end
-  end
-end</code></pre>
-        </div>
-
-        <!-- C# SDK -->
-        <div id="csharp" class="section">
-            <h2>C# SDK</h2>
-
-            <h3>Installation</h3>
-            <pre><code>dotnet add package TollMeshCache</code></pre>
-
-            <h3>Native Async/Await</h3>
-            <pre><code>using TollMeshCache;
-
-var config = new ClientConfig
-{
-    Host = "localhost",
-    Port = 8080
-};
-
-using var client = new Client(config);
-
-var result = await client.ConsumeAsync("user-123", 100, TimeSpan.FromMinutes(1));
-if (result.Ok)
-{
-    Console.WriteLine("Request allowed");
-}</code></pre>
-
-            <h3>ASP.NET Core Middleware</h3>
-            <pre><code>public class RateLimitMiddleware
-{
-    private readonly RequestDelegate _next;
-    private readonly Client _client;
-
-    public RateLimitMiddleware(RequestDelegate next)
-    {
-        _next = next;
-        _client = new Client();
-    }
-
-    public async Task InvokeAsync(HttpContext context)
-    {
-        var userId = context.User?.FindFirst(ClaimTypes.NameIdentifier)?.Value;
-        var result = await _client.ConsumeAsync(userId, 1000, TimeSpan.FromMinutes(1));
-
-        if (!result.Ok)
-        {
-            context.Response.StatusCode = 429;
-            await context.Response.WriteAsync("Rate limited");
-            return;
-        }
-
-        await _next(context);
-    }
-}</code></pre>
-        </div>
-
-        <!-- PHP SDK -->
-        <div id="php" class="section">
-            <h2>PHP SDK</h2>
-
-            <h3>Installation</h3>
-            <pre><code>composer require toll-mesh/cache</code></pre>
-
-            <h3>Basic Usage</h3>
-            <pre><code>&lt;?php
-require 'vendor/autoload.php';
-
-use TollMesh\Cache\Client;
-use TollMesh\Cache\ClientConfig;
-
-$config = new ClientConfig([
-    'host' => 'localhost',
-    'port' => 8080,
-]);
-
-$client = new Client($config);
-
-// Rate limiting
-$result = $client->consume('user-123', 100, 60000);
-if ($result['ok']) {
-    echo "Request allowed";
-} else {
-    http_response_code(429);
-    echo "Rate limited";
-}</code></pre>
-
-            <h3>Laravel Integration</h3>
-            <pre><code>namespace App\Http\Middleware;
-
-use TollMesh\Cache\Client;
-
-class RateLimitMiddleware
-{
-    public function handle($request, $next)
-    {
-        $client = new Client();
-        $userId = auth()->id() ?? $request->ip();
-
-        $result = $client->consume($userId, 1000, 60000);
-
-        if (!$result['ok']) {
-            return response('Rate limited', 429);
-        }
-
-        return $next($request);
-    }
-}</code></pre>
+# Execute script
+result = client.eval_script(script_id, ['user-123'], ['data', '3600'])</code></pre>
         </div>
 
         <!-- API REFERENCE -->
@@ -914,39 +1105,54 @@ class RateLimitMiddleware
             <h2>API Reference</h2>
 
             <h3>Core Operations</h3>
-            <h4>consume(key, limit, window)</h4>
-            <p>Distributed rate limiting using token bucket algorithm.</p>
             <table>
                 <tr>
-                    <th>Parameter</th>
-                    <th>Type</th>
+                    <th>Operation</th>
                     <th>Description</th>
+                    <th>Returns</th>
                 </tr>
                 <tr>
-                    <td>key</td>
-                    <td>string</td>
-                    <td>Rate limit bucket identifier (e.g., user-id, api-key)</td>
+                    <td>consume(key, limit, window)</td>
+                    <td>Rate limiting</td>
+                    <td>{ok, remaining, reset_at}</td>
                 </tr>
                 <tr>
-                    <td>limit</td>
-                    <td>integer</td>
-                    <td>Maximum tokens available in the window</td>
+                    <td>seen(key, ttl)</td>
+                    <td>Replay protection</td>
+                    <td>{seen}</td>
                 </tr>
                 <tr>
-                    <td>window</td>
-                    <td>duration</td>
-                    <td>Time window for the limit (milliseconds or duration object)</td>
+                    <td>cache_get(ns, key)</td>
+                    <td>Get cached value</td>
+                    <td>{value, exists}</td>
+                </tr>
+                <tr>
+                    <td>cache_set(ns, key, value, ttl)</td>
+                    <td>Set cached value</td>
+                    <td>{ok}</td>
+                </tr>
+                <tr>
+                    <td>publish(topic, message)</td>
+                    <td>Publish message</td>
+                    <td>{subscribers_count}</td>
+                </tr>
+                <tr>
+                    <td>subscribe(topic, callback)</td>
+                    <td>Subscribe to topic</td>
+                    <td>subscription_id</td>
                 </tr>
             </table>
 
-            <h4>seen(key, ttl)</h4>
-            <p>Replay protection - check if nonce was already seen.</p>
-
-            <h4>cache_set(namespace, key, value, ttl)</h4>
-            <p>Store value in distributed cache with TTL.</p>
-
-            <h4>cache_get(namespace, key)</h4>
-            <p>Retrieve value from distributed cache.</p>
+            <h3>Configuration</h3>
+            <pre><code>config = ClientConfig(
+    host='localhost',
+    port=8080,
+    timeout=5.0,
+    verify_ssl=True,
+    api_key='optional',
+    max_retries=3,
+    retry_backoff=1.0
+)</code></pre>
         </div>
     </div>
 
@@ -955,6 +1161,7 @@ class RateLimitMiddleware
     </footer>
 
     <script>
+        // Navigation
         document.querySelectorAll('.nav-link').forEach(link => {
             link.addEventListener('click', (e) => {
                 e.preventDefault();
@@ -967,6 +1174,20 @@ class RateLimitMiddleware
                 link.classList.add('active');
 
                 window.scrollTo(0, 0);
+            });
+        });
+
+        // Language selector
+        document.querySelectorAll('.lang-selector button').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                const lang = e.target.dataset.lang;
+                const parent = e.target.parentElement.parentElement;
+
+                parent.querySelectorAll('.lang-selector button').forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+
+                parent.querySelectorAll('.lang-code').forEach(c => c.classList.remove('active'));
+                parent.querySelectorAll(`.lang-code.${lang}`).forEach(c => c.classList.add('active'));
             });
         });
     </script>

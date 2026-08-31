@@ -1,3 +1,10 @@
+---
+layout: default
+title: Ruby SDK
+nav_order: 7
+parent: Home
+---
+
 # Ruby SDK
 
 ## Installation

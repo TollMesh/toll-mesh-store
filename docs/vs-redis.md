@@ -1,3 +1,9 @@
+---
+layout: default
+title: vs Redis
+nav_order: 9
+---
+
 # TollMeshCache vs Redis
 
 A detailed comparison for choosing the right solution.

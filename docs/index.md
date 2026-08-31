@@ -1,3 +1,10 @@
+---
+layout: default
+title: Home
+nav_order: 1
+description: "Production-ready distributed caching with 7-language SDK support"
+---
+
 # TollMeshCache Documentation
 
 **Production-ready distributed caching and coordination** with built-in rate limiting, replay protection, and CRDT-based convergence. **7 language SDKs** for every platform.

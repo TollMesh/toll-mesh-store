@@ -1,3 +1,10 @@
+---
+layout: default
+title: C# SDK
+nav_order: 8
+parent: Home
+---
+
 # C# SDK
 
 ## Installation

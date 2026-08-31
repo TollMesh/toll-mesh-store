@@ -1,3 +1,10 @@
+---
+layout: default
+title: API Reference
+nav_order: 8
+parent: Home
+---
+
 # API Reference
 
 Complete API documentation for all SDKs.

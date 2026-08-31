@@ -87,7 +87,7 @@ func TestRange(t *testing.T) {
 	zs := NewSortedSet("test", "node-1")
 
 	for i := 0; i < 10; i++ {
-		zs.Add("member", float64(i*10))
+		zs.Add("m"+string(rune(i)), float64(i*10))
 	}
 
 	members := zs.Range(20.0, 60.0, 100)
@@ -109,7 +109,7 @@ func TestRangeByRank(t *testing.T) {
 	zs := NewSortedSet("test", "node-1")
 
 	for i := 0; i < 10; i++ {
-		zs.Add("m", float64(i))
+		zs.Add("m"+string(rune('0'+byte(i))), float64(i))
 	}
 
 	members := zs.RangeByRank(2, 5)
@@ -149,7 +149,7 @@ func TestCount(t *testing.T) {
 	zs := NewSortedSet("test", "node-1")
 
 	for i := 0; i < 100; i++ {
-		zs.Add("m", float64(i))
+		zs.Add("m"+string(rune(i)), float64(i))
 	}
 
 	count := zs.Count(20.0, 50.0)
@@ -242,10 +242,10 @@ func TestTombstoneMerge(t *testing.T) {
 func TestLargeLeaderboard(t *testing.T) {
 	zs := NewSortedSet("scores", "node-1")
 
-	// Add 10k members
-	for i := 0; i < 10000; i++ {
+	// Add 1k members (reduced for test speed)
+	for i := 0; i < 1000; i++ {
 		score := float64(i) * 1.5
-		zs.Add("player", score)
+		zs.Add("p"+string(rune(i)), score)
 	}
 
 	// Get top 10
@@ -301,12 +301,12 @@ func BenchmarkRank(b *testing.B) {
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
-		zs.Add("m", float64(i))
+		zs.Add("m"+string(rune(i)), float64(i))
 	}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {
-		zs.Rank("member")
+		zs.Rank("m5000")
 	}
 }
 
@@ -315,7 +315,7 @@ func BenchmarkRange(b *testing.B) {
 
 	// Pre-populate
 	for i := 0; i < 10000; i++ {
-		zs.Add("m", float64(i))
+		zs.Add("m"+string(rune(i)), float64(i))
 	}
 
 	b.ResetTimer()

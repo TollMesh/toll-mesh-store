@@ -25,7 +25,7 @@ jobs:
       - name: Install dependencies
         run: |
           cd sdks/nodejs/
-          npm ci
+          npm install
 
       - name: Build TypeScript
         run: |

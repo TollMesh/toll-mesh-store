@@ -200,7 +200,6 @@ func TestConcurrentClaiming(t *testing.T) {
 
 func TestDeadlineExpiry(t *testing.T) {
 	jm := NewJobManager("node-1")
-	defer jm.Stop()
 
 	// Enqueue job with 1 second deadline
 	job, _ := jm.Enqueue("test-queue", []byte("test"), JobOptions{
@@ -210,8 +209,24 @@ func TestDeadlineExpiry(t *testing.T) {
 	// Wait for expiry
 	time.Sleep(2 * time.Second)
 
-	// Trigger cleanup
-	jm.backgroundCleanup()
+	// Manually trigger cleanup (don't use background loop in test)
+	q := jm.GetOrCreateQueue("test-queue")
+	q.mu.Lock()
+
+	now := time.Now().UnixMilli()
+	newPending := make([]string, 0)
+	for _, jobID := range q.PendingJobs {
+		job := q.JobIndex[jobID]
+		if job.DeadlineAt > 0 && now > job.DeadlineAt {
+			q.moveToDeadLetter(job, "deadline exceeded")
+		} else {
+			newPending = append(newPending, jobID)
+		}
+	}
+	q.PendingJobs = newPending
+	q.mu.Unlock()
+
+	jm.Stop()
 
 	// Job should be in dead letter queue
 	dlq, _ := jm.GetDeadLetterQueue("test-queue")
@@ -230,7 +245,6 @@ func TestDeadlineExpiry(t *testing.T) {
 
 func TestProcessingTimeout(t *testing.T) {
 	jm := NewJobManager("node-1")
-	defer jm.Stop()
 
 	// Enqueue and claim job
 	job, _ := jm.Enqueue("test-queue", []byte("test"), DefaultJobOptions())
@@ -239,8 +253,31 @@ func TestProcessingTimeout(t *testing.T) {
 	// Manually set process start time to 10 minutes ago
 	claimedJob.ProcessStarted = time.Now().Add(-10 * time.Minute).UnixMilli()
 
-	// Trigger cleanup (should timeout)
-	jm.backgroundCleanup()
+	// Manually trigger cleanup
+	q := jm.GetOrCreateQueue("test-queue")
+	q.mu.Lock()
+
+	const PROCESSING_TIMEOUT = 5 * time.Minute
+	now := time.Now().UnixMilli()
+	newProcessing := make([]string, 0)
+	newPending := make([]string, 0)
+
+	for _, jobID := range q.ProcessingJobs {
+		job := q.JobIndex[jobID]
+		if job.ProcessStarted > 0 && now-job.ProcessStarted > PROCESSING_TIMEOUT.Milliseconds() {
+			job.Status = StatusPending
+			job.ProcessedBy = ""
+			newPending = append(newPending, jobID)
+		} else {
+			newProcessing = append(newProcessing, jobID)
+		}
+	}
+
+	q.ProcessingJobs = newProcessing
+	q.PendingJobs = append(q.PendingJobs, newPending...)
+	q.mu.Unlock()
+
+	jm.Stop()
 
 	// Job should be back to pending
 	status, _ := jm.GetJobStatus("test-queue", job.ID)

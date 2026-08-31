@@ -1,0 +1,104 @@
+# Dependencies
+node_modules/
+vendor/
+target/
+*.o
+*.a
+*.so
+__pycache__/
+*.py[cod]
+*$py.class
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+.gradle/
+*.class
+*.jar
+*.war
+*.ear
+bin/
+obj/
+packages/
+
+# IDEs
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+.project
+.classpath
+.c9/
+*.sublime-workspace
+.env
+
+# Build outputs
+dist/
+build/
+*.o
+*.so
+
+# Test coverage
+.coverage
+htmlcov/
+.pytest_cache/
+coverage.xml
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+lerna-debug.log*
+*.log
+
+# Local overrides
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+.tmp/
+
+# Lock files (keep package manager ones, ignore others)
+poetry.lock
+Cargo.lock
+
+# Documentation build artifacts (generated, not source)
+docs/_build/
+site/
+
+# IDE settings (personal, not repo)
+.editorconfig.local
+
+# Unnecessary markdown files (keep only essential docs)
+ADVANCED_FEATURES_ROADMAP.md
+AGENTIC_REQUIREMENTS.md
+CACHE_IMPROVEMENTS.md
+CODE_REVIEW.md
+COMPARISON_WITH_REDIS.md
+IMPLEMENTATION_STATUS.md
+COMPLETION_STATUS.md
+FINAL_DELIVERY.md
+MEGA_SUMMARY.md
+SDK_STATUS.md
+
+# Keep in git
+!README.md
+!ARCHITECTURE.md
+!MULTI_LANGUAGE_GUIDE.md
+!IMPLEMENTATION_ROADMAP.md

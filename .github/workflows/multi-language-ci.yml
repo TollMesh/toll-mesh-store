@@ -1,0 +1,340 @@
+name: Multi-Language CI/CD
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main, develop ]
+
+jobs:
+  # Go - Core Server
+  test-go:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - run: go test ./... -v -cover
+      - run: go build -o tollmesh-server ./cmd/server
+      - uses: actions/upload-artifact@v3
+        with:
+          name: tollmesh-server
+          path: tollmesh-server
+
+  # Python SDK
+  test-python:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: [ '3.8', '3.9', '3.10', '3.11', '3.12' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: cd sdks/python && pip install -e ".[dev]"
+      - run: cd sdks/python && pytest -v --cov=tollmeshcache
+      - run: cd sdks/python && black --check tollmeshcache
+      - run: cd sdks/python && flake8 tollmeshcache
+
+  # Node.js / TypeScript SDK
+  test-nodejs:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        node-version: [ '16.x', '18.x', '20.x' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-node@v3
+        with:
+          node-version: ${{ matrix.node-version }}
+      - run: cd sdks/nodejs && npm ci
+      - run: cd sdks/nodejs && npm run build
+      - run: cd sdks/nodejs && npm run lint
+      - run: cd sdks/nodejs && npm test -- --coverage
+
+  # Java SDK
+  test-java:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        java-version: [ '11', '17', '21' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: ${{ matrix.java-version }}
+      - run: cd sdks/java && mvn clean verify -DskipITs=false
+      - run: cd sdks/java && mvn jacoco:report
+      - uses: codecov/codecov-action@v3
+        with:
+          files: ./sdks/java/target/site/jacoco/jacoco.xml
+
+  # Rust SDK
+  test-rust:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-toolchain: [ 'stable', 'beta' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust-toolchain }}
+      - run: cd sdks/rust && cargo test --all-features
+      - run: cd sdks/rust && cargo clippy --all-features -- -D warnings
+      - run: cd sdks/rust && cargo fmt --check
+
+  # Ruby SDK
+  test-ruby:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        ruby-version: [ '2.7', '3.0', '3.1', '3.2' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: ${{ matrix.ruby-version }}
+          bundler-cache: true
+          working-directory: ./sdks/ruby
+      - run: cd sdks/ruby && bundle install
+      - run: cd sdks/ruby && bundle exec rspec
+      - run: cd sdks/ruby && bundle exec rubocop
+
+  # C# / .NET SDK
+  test-csharp:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        dotnet-version: [ '6.0', '7.0', '8.0' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: ${{ matrix.dotnet-version }}
+      - run: cd sdks/csharp && dotnet restore
+      - run: cd sdks/csharp && dotnet build --configuration Release
+      - run: cd sdks/csharp && dotnet test --configuration Release --no-build
+
+  # PHP SDK
+  test-php:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        php-version: [ '8.0', '8.1', '8.2', '8.3' ]
+    steps:
+      - uses: actions/checkout@v3
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: ${{ matrix.php-version }}
+          extensions: curl, json
+      - run: cd sdks/php && composer install
+      - run: cd sdks/php && composer test
+      - run: cd sdks/php && composer analyze
+      - run: cd sdks/php && composer lint
+
+  # Integration Tests - All SDKs against Go server
+  integration-tests:
+    needs: [ test-go, test-python, test-nodejs, test-java, test-rust, test-ruby, test-csharp, test-php ]
+    runs-on: ubuntu-latest
+    services:
+      tollmesh:
+        image: tollmesh/cache:latest
+        ports:
+          - 8080:8080
+        options: >-
+          --health-cmd "curl -f http://localhost:8080/health || exit 1"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0'
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+
+      # Run integration tests for each SDK
+      - name: Python Integration Tests
+        run: |
+          cd sdks/python
+          pip install -e .
+          pytest tests/integration/
+
+      - name: Node.js Integration Tests
+        run: |
+          cd sdks/nodejs
+          npm ci
+          npm run build
+          npm run test:integration
+
+      - name: Java Integration Tests
+        run: |
+          cd sdks/java
+          mvn verify -P integration-tests
+
+      - name: Rust Integration Tests
+        run: |
+          cd sdks/rust
+          cargo test --test integration_tests --features http
+
+      - name: Ruby Integration Tests
+        run: |
+          cd sdks/ruby
+          bundle install
+          bundle exec rspec spec/integration/
+
+      - name: C# Integration Tests
+        run: |
+          cd sdks/csharp
+          dotnet test --filter "Category=Integration"
+
+      - name: PHP Integration Tests
+        run: |
+          cd sdks/php
+          composer install
+          phpunit --testsuite=integration
+
+  # Documentation
+  docs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: pip install sphinx sphinx-rtd-theme
+      - run: cd docs && make html
+      - uses: actions/upload-artifact@v3
+        with:
+          name: docs
+          path: docs/_build/html/
+
+  # Coverage Report
+  coverage:
+    needs: [ test-python, test-nodejs, test-java, test-csharp, test-php ]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: codecov/codecov-action@v3
+        with:
+          files: ./sdks/python/.coverage,./sdks/java/target/site/jacoco/jacoco.xml
+          flags: multilinguality
+          name: coverage-report
+
+  # Package Build
+  package:
+    needs: [ test-go, test-python, test-nodejs, test-java, test-rust, test-ruby, test-csharp, test-php ]
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v3
+
+      # Python Package
+      - uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+      - run: cd sdks/python && pip install build && python -m build
+      - uses: actions/upload-artifact@v3
+        with:
+          name: python-package
+          path: sdks/python/dist/
+
+      # Node.js Package
+      - uses: actions/setup-node@v3
+        with:
+          node-version: '20.x'
+      - run: cd sdks/nodejs && npm ci && npm run build && npm pack
+      - uses: actions/upload-artifact@v3
+        with:
+          name: nodejs-package
+          path: sdks/nodejs/*.tgz
+
+      # Java Package
+      - uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+      - run: cd sdks/java && mvn clean package
+      - uses: actions/upload-artifact@v3
+        with:
+          name: java-package
+          path: sdks/java/target/*.jar
+
+      # Rust Package
+      - uses: dtolnay/rust-toolchain@stable
+      - run: cd sdks/rust && cargo build --release && cargo package
+      - uses: actions/upload-artifact@v3
+        with:
+          name: rust-package
+          path: sdks/rust/target/package/*.crate
+
+      # Ruby Package
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.2'
+      - run: cd sdks/ruby && gem build *.gemspec
+      - uses: actions/upload-artifact@v3
+        with:
+          name: ruby-package
+          path: sdks/ruby/*.gem
+
+      # C# Package
+      - uses: actions/setup-dotnet@v3
+        with:
+          dotnet-version: '8.0'
+      - run: cd sdks/csharp && dotnet pack -c Release
+      - uses: actions/upload-artifact@v3
+        with:
+          name: csharp-package
+          path: sdks/csharp/bin/Release/*.nupkg
+
+      # PHP Package
+      - uses: actions/setup-php@v2
+        with:
+          php-version: '8.3'
+      - run: cd sdks/php && composer install && composer archive --format=tar --dir=/tmp
+      - uses: actions/upload-artifact@v3
+        with:
+          name: php-package
+          path: /tmp/*.tar
+
+  # Release (manual trigger)
+  release:
+    needs: package
+    runs-on: ubuntu-latest
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && startsWith(github.event.head_commit.message, 'chore: release')
+    steps:
+      - name: Download All Artifacts
+        uses: actions/download-artifact@v3
+      - name: Create GitHub Release
+        uses: actions/create-release@v1
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          tag_name: v1.0.0
+          release_name: TollMeshCache v1.0.0
+          draft: false
+          prerelease: false

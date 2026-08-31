@@ -1,0 +1,170 @@
+syntax = "proto3";
+
+package tollmesh.store.v1;
+
+option go_package = "github.com/toll-mesh/store/api/v1;storev1";
+option java_multiple_files = true;
+option java_package = "com.tollmesh.store.v1";
+option java_outer_classname = "StoreProto";
+option csharp_namespace = "TollMesh.Store.V1";
+option php_namespace = "TollMesh\\Store\\V1";
+option ruby_package = "TollMesh::Store::V1";
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/duration.proto";
+
+service Store {
+  // Rate limiting operation - consume tokens from a rate limit bucket
+  rpc Consume(ConsumeRequest) returns (ConsumeResponse);
+
+  // Replay protection - check if a nonce was already seen
+  rpc Seen(SeenRequest) returns (SeenResponse);
+
+  // Get a value from distributed cache
+  rpc Get(GetRequest) returns (GetResponse);
+
+  // Set a value in distributed cache
+  rpc Set(SetRequest) returns (SetResponse);
+
+  // Health check
+  rpc Health(HealthRequest) returns (HealthResponse);
+
+  // Get connected peers
+  rpc GetPeers(GetPeersRequest) returns (GetPeersResponse);
+}
+
+// ConsumeRequest is a rate limit consumption request
+message ConsumeRequest {
+  // key: Rate limit key (e.g., "api-key", "user-id")
+  string key = 1;
+
+  // limit: Maximum tokens allowed per window
+  int32 limit = 2;
+
+  // window: Time window duration
+  google.protobuf.Duration window = 3;
+}
+
+// ConsumeResponse is the result of a rate limit check
+message ConsumeResponse {
+  // ok: Whether the request is allowed
+  bool ok = 1;
+
+  // remaining: Tokens remaining after this request
+  int32 remaining = 2;
+
+  // reset_at: When the limit resets
+  google.protobuf.Timestamp reset_at = 3;
+
+  // error: Error message if operation failed
+  string error = 4;
+}
+
+// SeenRequest is a replay protection check request
+message SeenRequest {
+  // key: Nonce or unique identifier
+  string key = 1;
+
+  // ttl: How long to track this nonce
+  google.protobuf.Duration ttl = 2;
+}
+
+// SeenResponse indicates if a nonce was already seen
+message SeenResponse {
+  // seen: true if already seen (replay detected)
+  bool seen = 1;
+
+  // error: Error message if operation failed
+  string error = 2;
+}
+
+// GetRequest retrieves a value from cache
+message GetRequest {
+  // namespace: Cache namespace
+  string namespace = 1;
+
+  // key: Cache key within namespace
+  string key = 2;
+}
+
+// GetResponse returns a cached value
+message GetResponse {
+  // value: The cached value (binary safe)
+  bytes value = 1;
+
+  // exists: Whether the key exists and is not expired
+  bool exists = 2;
+
+  // error: Error message if operation failed
+  string error = 3;
+}
+
+// SetRequest stores a value in cache
+message SetRequest {
+  // namespace: Cache namespace
+  string namespace = 1;
+
+  // key: Cache key within namespace
+  string key = 2;
+
+  // value: Value to cache (binary safe)
+  bytes value = 3;
+
+  // ttl: Time-to-live duration (0 = no expiration)
+  google.protobuf.Duration ttl = 4;
+}
+
+// SetResponse confirms a cache write
+message SetResponse {
+  // error: Error message if operation failed
+  string error = 1;
+}
+
+// HealthRequest is a health check request
+message HealthRequest {}
+
+// HealthResponse indicates node health
+message HealthResponse {
+  enum Status {
+    UNKNOWN = 0;
+    HEALTHY = 1;
+    DEGRADED = 2;
+    UNHEALTHY = 3;
+  }
+
+  Status status = 1;
+  string node = 2;
+  int32 peers = 3;
+
+  message Stats {
+    int64 uptime_seconds = 1;
+    int64 requests_total = 2;
+    float latency_p99_ms = 3;
+    float cache_hit_rate = 4;
+  }
+  Stats stats = 4;
+}
+
+// GetPeersRequest lists connected peers
+message GetPeersRequest {}
+
+// GetPeersResponse returns peer information
+message GetPeersResponse {
+  message Peer {
+    string id = 1;
+    string address = 2;
+    int32 port = 3;
+    int32 latency_ms = 4;
+  }
+  repeated Peer peers = 1;
+}
+
+// Error codes for client handling
+enum ErrorCode {
+  ERROR_CODE_UNSPECIFIED = 0;
+  ERROR_CODE_INVALID_REQUEST = 400;
+  ERROR_CODE_RATE_LIMITED = 429;
+  ERROR_CODE_NOT_FOUND = 404;
+  ERROR_CODE_INTERNAL = 500;
+  ERROR_CODE_UNAVAILABLE = 503;
+}

@@ -1,0 +1,333 @@
+openapi: 3.0.0
+info:
+  title: TollMeshCache API
+  description: Distributed CRDT-based caching and coordination layer
+  version: 1.0.0
+  contact:
+    name: TollMesh Team
+    url: https://github.com/toll-mesh/store
+  license:
+    name: Apache 2.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development server
+  - url: https://api.tollmesh.io
+    description: Production server
+
+components:
+  schemas:
+    ConsumeRequest:
+      type: object
+      required: [key, limit, window]
+      properties:
+        key:
+          type: string
+          description: Rate limit key (e.g., "api-key", "user-id")
+          example: "user-123"
+        limit:
+          type: integer
+          description: Maximum tokens allowed per window
+          example: 100
+        window:
+          type: integer
+          description: Time window in milliseconds
+          example: 60000
+
+    ConsumeResponse:
+      type: object
+      required: [ok, remaining, reset_at]
+      properties:
+        ok:
+          type: boolean
+          description: Whether request is allowed (true if tokens available)
+        remaining:
+          type: integer
+          description: Tokens remaining after this request
+          minimum: 0
+        reset_at:
+          type: integer
+          description: Unix timestamp (milliseconds) when limit resets
+        error:
+          type: string
+          description: Error message if ok=false
+
+    SeenRequest:
+      type: object
+      required: [key, ttl]
+      properties:
+        key:
+          type: string
+          description: Nonce or unique identifier for replay protection
+          example: "req-12345-abcde"
+        ttl:
+          type: integer
+          description: Time-to-live in milliseconds (how long to track this nonce)
+          example: 300000
+
+    SeenResponse:
+      type: object
+      required: [seen]
+      properties:
+        seen:
+          type: boolean
+          description: true if this key was already seen (replay detected)
+        error:
+          type: string
+          description: Error message if operation failed
+
+    CacheRequest:
+      type: object
+      required: [namespace, key]
+      properties:
+        namespace:
+          type: string
+          description: Cache namespace (e.g., "user-profiles", "session-tokens")
+          example: "user-profiles"
+        key:
+          type: string
+          description: Cache key within namespace
+          example: "user-123"
+        value:
+          type: string
+          description: Value to cache (base64 encoded or JSON string)
+          format: binary
+        ttl:
+          type: integer
+          description: Time-to-live in milliseconds (0 = no expiration)
+          example: 3600000
+
+    CacheResponse:
+      type: object
+      required: [exists]
+      properties:
+        value:
+          type: string
+          description: Cached value (base64 encoded or JSON)
+          format: binary
+        exists:
+          type: boolean
+          description: true if key exists and not expired
+        error:
+          type: string
+          description: Error message if operation failed
+
+    HealthResponse:
+      type: object
+      required: [status, node, peers]
+      properties:
+        status:
+          type: string
+          enum: [healthy, degraded, unhealthy]
+          description: Node health status
+        node:
+          type: string
+          description: Node ID/name
+          example: "node-1"
+        peers:
+          type: integer
+          description: Number of connected peers
+          minimum: 0
+        stats:
+          type: object
+          description: Operational statistics
+          properties:
+            uptime_seconds:
+              type: integer
+            requests_total:
+              type: integer
+            latency_p99_ms:
+              type: number
+            cache_hit_rate:
+              type: number
+              format: double
+
+    ErrorResponse:
+      type: object
+      required: [code, message]
+      properties:
+        code:
+          type: integer
+          description: Numeric error code for programmatic handling
+          example: 1001
+        message:
+          type: string
+          description: Human-readable error message
+        details:
+          type: object
+          description: Additional context about the error
+          additionalProperties: true
+
+  responses:
+    BadRequest:
+      description: Invalid request parameters
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    RateLimitExceeded:
+      description: Rate limit exceeded
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+    InternalError:
+      description: Internal server error
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/ErrorResponse' }
+
+  securitySchemes:
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+      description: Optional API key for authentication
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      description: Check node health and cluster status
+      tags: [System]
+      operationId: getHealth
+      responses:
+        '200':
+          description: Node is healthy
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/HealthResponse' }
+        '503':
+          $ref: '#/components/responses/InternalError'
+
+  /consume:
+    post:
+      summary: Rate limit check
+      description: Check and consume rate limit tokens for a key
+      tags: [Rate Limiting]
+      operationId: consume
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/ConsumeRequest' }
+      responses:
+        '200':
+          description: Rate limit check result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/ConsumeResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /seen:
+    post:
+      summary: Replay protection check
+      description: Check if a nonce was already seen (detect replays)
+      tags: [Replay Protection]
+      operationId: seen
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/SeenRequest' }
+      responses:
+        '200':
+          description: Replay check result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SeenResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cache/get:
+    post:
+      summary: Get cached value
+      description: Retrieve a value from distributed cache
+      tags: [Caching]
+      operationId: cacheGet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [namespace, key]
+              properties:
+                namespace: { type: string }
+                key: { type: string }
+      responses:
+        '200':
+          description: Cache lookup result
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/CacheResponse' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /cache/set:
+    post:
+      summary: Set cached value
+      description: Store a value in distributed cache with optional TTL
+      tags: [Caching]
+      operationId: cacheSet
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: '#/components/schemas/CacheRequest' }
+      responses:
+        '200':
+          description: Value cached successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  error: { type: string }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+  /peers:
+    get:
+      summary: Get connected peers
+      description: List all connected cluster nodes
+      tags: [Cluster]
+      operationId: getPeers
+      responses:
+        '200':
+          description: List of peers
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  peers:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id: { type: string }
+                        address: { type: string }
+                        port: { type: integer }
+                        latency_ms: { type: integer }
+
+tags:
+  - name: System
+    description: System and health endpoints
+  - name: Rate Limiting
+    description: Distributed rate limiting operations
+  - name: Replay Protection
+    description: Replay attack prevention
+  - name: Caching
+    description: Distributed cache operations
+  - name: Cluster
+    description: Cluster management

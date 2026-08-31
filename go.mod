@@ -1,3 +1,3 @@
-module github.com/TollMesh/toll-mesh-store
+module github.com/toll-mesh/store
 
 go 1.25

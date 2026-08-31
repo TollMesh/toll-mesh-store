@@ -1,0 +1,34 @@
+title: TollMeshCache
+description: Distributed CRDT-based caching and coordination layer
+baseurl: /store
+url: https://toll-mesh.github.io
+repository: toll-mesh/store
+
+remote_theme: just-the-docs/just-the-docs
+
+color_scheme: dark
+
+search_enabled: true
+search.heading_level: 2
+
+footer_content: "Copyright &copy; 2024 TollMesh. <a href=\"https://github.com/toll-mesh/store/blob/main/LICENSE\">Licensed under Apache 2.0</a>"
+
+nav_order: 1
+has_children: false
+
+plugins:
+  - jekyll-remote-theme
+  - jekyll-seo-tag
+
+# Navigation structure
+nav:
+  - Overview
+  - Python: /docs/python.md
+  - Node.js: /docs/nodejs.md
+  - Java: /docs/java.md
+  - Rust: /docs/rust.md
+  - Ruby: /docs/ruby.md
+  - C#: /docs/csharp.md
+  - PHP: /docs/php.md
+  - API: /docs/api.md
+  - Architecture: /ARCHITECTURE.md

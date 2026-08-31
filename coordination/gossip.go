@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/core"
+	"github.com/toll-mesh/store/core"
 )
 
 // GossipMessage represents a state sync message between nodes

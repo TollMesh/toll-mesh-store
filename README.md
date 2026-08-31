@@ -1,184 +1,186 @@
-# TollMeshStore - Distributed Storage for Toll
+# TollMeshCache - Multi-Language SDK Ecosystem
 
-A production-ready peer-to-peer distributed storage solution using CRDTs (Conflict-Free Replicated Data Types) and gossip protocols. Designed as a Redis-free alternative for Toll's distributed coordination needs.
+Production-ready distributed caching and coordination SDK with **7 language support**: Python, Node.js, Java, Rust, Ruby, C#, and PHP. Built on CRDT (Conflict-Free Replicated Data Types) technology for Redis-free distributed systems.
 
-## Features
+## 🚀 Features
 
-- **CRDT-Based Coordination**: Automatic convergence without central coordinator
-- **Distributed Rate Limiting**: Token-bucket rate limiting across mesh nodes
-- **Replay Protection**: Distributed nonce tracking for security
-- **TTL-Based Caching**: Automatic expiration of cached entries
-- **Thread-Safe**: All operations protected with RWMutex
-- **Zero-Config**: Automatic peer discovery ready
-- **Production-Ready**: Comprehensive error handling and cleanup
+- **7 Language SDKs**: Python, Node.js, Java, Rust, Ruby, C#, PHP
+- **Distributed Rate Limiting**: CRDT-based token bucket across cluster
+- **Replay Protection**: Secure nonce tracking with automatic convergence
+- **Distributed Caching**: TTL-based cache with automatic expiration
+- **Async/Await**: Full async support in all SDKs
+- **Type-Safe**: Native type hints and strong typing
+- **Production-Ready**: Comprehensive error handling and health checks
 
-## Architecture
+## 📦 Installation
 
-### Core Components
-
-#### 1. **CRDTs (Conflict-Free Replicated Data Types)**
-
-- **GCounter**: Grow-only counter for distributed rate limiting
-  - Each node maintains its own count
-  - Total is sum of all node counts
-  - Automatically converges across nodes
-  
-- **GSet**: Grow-only set for replay protection
-  - Distributed set of seen nonces
-  - Only supports add operations
-  - Automatically converges across nodes
-  
-- **ExpiringSet**: TTL-based set with automatic cleanup
-  - Items expire after specified TTL
-  - Background cleanup goroutine
-  - Thread-safe operations
-
-#### 2. **MeshStore**
-
-Implements the `Store` interface with:
-
-- **Consume(ctx, key, limit, window)**: Rate limiting
-  - Returns ConsumeResult with OK status and remaining tokens
-  - Uses GCounter for distributed coordination
-  
-- **Seen(ctx, key, ttl)**: Replay protection
-  - Returns true if key was already seen (replay detected)
-  - Uses GSet for distributed tracking
-  
-- **Get(ctx, ns, key)**: Retrieve cached value
-  - Returns value, exists flag, and error
-  - Checks TTL before returning
-  
-- **Set(ctx, ns, key, value, ttl)**: Store value with TTL
-  - Stores value in distributed cache
-  - Automatically expires after TTL
-  
-- **Close()**: Graceful shutdown
-  - Stops background cleanup goroutine
-
-## Usage
-
-```go
-package main
-
-import (
-	"context"
-	"time"
-	
-	"github.com/toll-mesh/store/core"
-	"github.com/toll-mesh/store/store"
-)
-
-func main() {
-	// Create configuration
-	config := &core.ClusterConfig{
-		NodeName: "node1",
-		BindAddr: "127.0.0.1",
-		BindPort: 8000,
-	}
-	
-	// Create MeshStore
-	meshStore, err := store.NewMeshStore(config)
-	if err != nil {
-		panic(err)
-	}
-	defer meshStore.Close()
-	
-	// Rate limiting
-	result, err := meshStore.Consume(context.Background(), "api-key", 100, 1*time.Minute)
-	if !result.OK {
-		// Rate limited
-	}
-	
-	// Replay protection
-	seen, err := meshStore.Seen(context.Background(), "nonce-123", 5*time.Minute)
-	if seen {
-		// Replay detected
-	}
-	
-	// Caching
-	meshStore.Set(context.Background(), "cache", "key1", []byte("value1"), 10*time.Minute)
-	value, exists, err := meshStore.Get(context.Background(), "cache", "key1")
-}
-```
-
-## Testing
-
-All functionality is covered by comprehensive tests:
+Choose your language and install:
 
 ```bash
-# Run all tests
-go test ./... -v
+# Python
+pip install tollmeshcache
 
-# Run specific package tests
-go test ./core -v
-go test ./store -v
+# Node.js
+npm install tollmeshcache
 
-# Run with coverage
-go test ./... -cover
+# Java
+mvn dependency:get -Dartifact=com.tollmesh:tollmeshcache:1.0.0
+
+# Rust
+cargo add tollmeshcache
+
+# Ruby
+gem install tollmeshcache
+
+# C#
+dotnet add package TollMeshCache
+
+# PHP
+composer require toll-mesh/cache
 ```
 
-### Test Coverage
+## 📚 Documentation
 
-- **CRDT Tests**: GCounter, GSet, ExpiringSet operations and merging
-- **MeshStore Tests**: Rate limiting, replay protection, caching, concurrent access
-- **E2E Tests**: Full workflow testing with concurrent operations
+Full documentation available on [GitHub Pages](https://toll-mesh.github.io/toll-mesh-store/):
 
-## Performance Characteristics
+- **[Python SDK](docs/python.md)** - Async/sync with httpx
+- **[Node.js SDK](docs/nodejs.md)** - TypeScript, streaming support
+- **[Java SDK](docs/java.md)** - OkHttp3, CompletableFuture async
+- **[Rust SDK](docs/rust.md)** - Tokio async, type-safe
+- **[Ruby SDK](docs/ruby.md)** - HTTPClient, idiomatic
+- **[C# SDK](docs/csharp.md)** - Native async/await
+- **[PHP SDK](docs/php.md)** - Guzzle, PSR-compliant
 
-- **Rate Limiting**: O(1) per operation
-- **Replay Protection**: O(1) per operation
-- **Caching**: O(1) per operation
-- **Memory**: O(n) where n is number of unique keys
-- **Cleanup**: Background goroutine runs every 1 minute
+## 💻 Quick Start
 
-## Integration with Toll
+### Python
 
-The MeshStore implements the `core.Store` interface, making it compatible with Toll's existing store abstraction:
+```python
+from tollmeshcache import Client
+from datetime import timedelta
 
-```go
-var s core.Store = meshStore // Compatible with Toll's Store interface
+client = Client(host='localhost', port=8080)
+
+# Rate limiting
+result = client.consume('user-123', limit=100, window=timedelta(minutes=1))
+if result['ok']:
+    print('Request allowed')
+
+# Replay protection
+if client.seen('nonce-123', ttl=timedelta(minutes=5))['seen']:
+    raise Exception('Replay detected!')
+
+# Caching
+client.cache_set('users', 'user-123', data, ttl=timedelta(hours=1))
+value, exists = client.cache_get('users', 'user-123')
 ```
 
-## Architecture Diagram
+### Node.js/TypeScript
+
+```typescript
+import { Client } from 'tollmeshcache';
+
+const client = new Client({ host: 'localhost', port: 8080 });
+
+// Rate limiting
+const result = await client.consume('user-123', 100, 60000);
+if (result.ok) console.log('Request allowed');
+
+// Replay protection
+if ((await client.seen('nonce-123', 300000)).seen) {
+  throw new Error('Replay detected!');
+}
+
+// Caching
+await client.cacheSet('users', 'user-123', data, 3600000);
+const [value, exists] = await client.cacheGet('users', 'user-123');
+```
+
+### Java
+
+```java
+Client client = new Client(config);
+
+// Rate limiting
+ConsumeResult result = client.consume("user-123", 100, Duration.ofMinutes(1));
+if (result.ok) System.out.println("Request allowed");
+
+// Replay protection
+if (client.seen("nonce-123", Duration.ofMinutes(5)).seen)
+  throw new Exception("Replay detected!");
+
+// Caching
+client.cacheSet("users", "user-123", data, Duration.ofHours(1));
+CacheValue cached = client.cacheGet("users", "user-123");
+```
+
+More examples in [docs/](docs/) directory.
+
+## 🧪 Testing
+
+Each SDK includes comprehensive test coverage:
+
+```bash
+# Python
+pytest sdks/python/tests/
+
+# Node.js
+npm test --workspace=sdks/nodejs
+
+# Java
+mvn test -f sdks/java/pom.xml
+
+# Rust
+cargo test -p tollmeshcache
+
+# Ruby
+rspec sdks/ruby/spec/
+
+# C#
+dotnet test sdks/csharp/
+
+# PHP
+vendor/bin/phpunit sdks/php/tests/
+```
+
+## ⚡ Performance
+
+All operations are O(1):
+
+- **Rate Limiting**: Constant-time token consumption
+- **Replay Protection**: Distributed set membership test
+- **Caching**: Direct cache lookup with TTL validation
+- **Memory**: O(n) where n = number of unique keys
+- **Automatic Convergence**: CRDT-based state synchronization
+
+## 🏗️ Architecture
 
 ```
 ┌─────────────────────────────────────────┐
-│         MeshStore Instance              │
+│      TollMeshCache Cluster              │
 ├─────────────────────────────────────────┤
 │                                         │
-│  ┌──────────────────────────────────┐  │
-│  │   Rate Limiting (GCounter)       │  │
-│  │   - Distributed token bucket     │  │
-│  │   - Per-key rate limits          │  │
-│  └──────────────────────────────────┘  │
+│  Node 1: Rate Limiting (GCounter)       │
+│  Node 2: Replay Protection (GSet)       │
+│  Node 3: Distributed Cache (TTL)        │
 │                                         │
-│  ┌──────────────────────────────────┐  │
-│  │   Replay Protection (GSet)       │  │
-│  │   - Distributed nonce tracking   │  │
-│  │   - Automatic convergence        │  │
-│  └──────────────────────────────────┘  │
-│                                         │
-│  ┌──────────────────────────────────┐  │
-│  │   Distributed Cache              │  │
-│  │   - TTL-based expiration         │  │
-│  │   - Background cleanup           │  │
-│  └──────────────────────────────────┘  │
+│  ↔️ Automatic State Convergence via CRDT
 │                                         │
 └─────────────────────────────────────────┘
-         ↓
-    Gossip Protocol
-    (Future: Peer-to-peer sync)
+         ↕️
+    Multi-Language SDKs
+    (7 languages, 1 API)
 ```
 
-## Future Enhancements
+## 🔄 API Specifications
 
-1. **Gossip Protocol**: Implement peer-to-peer state synchronization
-2. **HTTP API**: REST endpoints for inter-node communication
-3. **Persistence**: Optional disk-based persistence
-4. **Metrics**: Prometheus metrics export
-5. **Clustering**: Automatic cluster formation and discovery
+- **OpenAPI 3.0**: `api/openapi.yaml` - REST/HTTP endpoints
+- **gRPC Proto**: `proto/store.proto` - Type definitions
 
-## License
+## 📋 Contributing
 
-Part of the Toll project
+We welcome contributions! See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
+
+## 📄 License
+
+Apache License 2.0 - See LICENSE file for details

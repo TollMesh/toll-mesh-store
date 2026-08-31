@@ -10,118 +10,726 @@
             font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
             line-height: 1.6;
             color: #333;
+            background: #f5f5f5;
+        }
+        header {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-        }
-        .container {
-            text-align: center;
             color: white;
-            padding: 40px;
-            max-width: 600px;
+            padding: 40px 20px;
+            text-align: center;
         }
-        h1 {
-            font-size: 3em;
-            margin-bottom: 20px;
-            font-weight: 700;
+        header h1 { font-size: 2.5em; margin-bottom: 10px; }
+        header p { font-size: 1.1em; opacity: 0.95; }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 40px 20px;
         }
-        p {
-            font-size: 1.2em;
+
+        nav {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
             margin-bottom: 40px;
-            opacity: 0.95;
-        }
-        .buttons {
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
             display: flex;
             gap: 20px;
-            justify-content: center;
             flex-wrap: wrap;
         }
-        a {
-            padding: 12px 30px;
-            border-radius: 5px;
+        nav a {
+            padding: 10px 20px;
+            background: #667eea;
+            color: white;
+            text-decoration: none;
+            border-radius: 4px;
+            transition: all 0.3s;
+            font-weight: 500;
+        }
+        nav a:hover {
+            background: #764ba2;
+            transform: translateY(-2px);
+        }
+        nav a.active {
+            background: #764ba2;
+            box-shadow: 0 4px 12px rgba(102, 126, 234, 0.4);
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 40px;
+        }
+
+        .card {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 8px 16px rgba(0,0,0,0.15);
+        }
+        .card h3 {
+            color: #667eea;
+            margin-bottom: 10px;
+            font-size: 1.3em;
+        }
+        .card p { color: #666; margin-bottom: 15px; }
+        .card a {
+            color: #667eea;
             text-decoration: none;
             font-weight: 600;
-            transition: all 0.3s;
-            border: 2px solid white;
+            transition: color 0.3s;
         }
-        .btn-primary {
+        .card a:hover { color: #764ba2; }
+
+        .section {
             background: white;
+            padding: 40px;
+            border-radius: 8px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+            margin-bottom: 40px;
+            display: none;
+        }
+        .section.active { display: block; }
+        .section h2 {
+            color: #667eea;
+            margin-bottom: 20px;
+            font-size: 2em;
+        }
+        .section h3 {
+            color: #764ba2;
+            margin-top: 30px;
+            margin-bottom: 15px;
+            font-size: 1.3em;
+        }
+        .section code {
+            background: #f5f5f5;
+            padding: 2px 6px;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+        }
+        .section pre {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 5px;
+            overflow-x: auto;
+            margin: 15px 0;
+            font-size: 0.9em;
+        }
+        .section pre code { background: none; padding: 0; }
+        .section ul { margin-left: 20px; margin-bottom: 15px; }
+        .section li { margin-bottom: 8px; }
+        .section table {
+            width: 100%;
+            border-collapse: collapse;
+            margin: 20px 0;
+        }
+        .section table th, .section table td {
+            padding: 12px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        .section table th {
+            background: #f5f5f5;
+            font-weight: 600;
             color: #667eea;
         }
-        .btn-primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 10px 20px rgba(0,0,0,0.2);
+
+        .feature-box {
+            background: #f0f4ff;
+            border-left: 4px solid #667eea;
+            padding: 20px;
+            margin: 20px 0;
+            border-radius: 4px;
         }
-        .btn-secondary {
-            background: transparent;
-            color: white;
+
+        footer {
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            margin-top: 40px;
+            border-top: 1px solid #ddd;
         }
-        .btn-secondary:hover {
-            background: rgba(255,255,255,0.1);
+
+        @media (max-width: 768px) {
+            header h1 { font-size: 1.8em; }
+            nav { flex-direction: column; }
+            nav a { width: 100%; text-align: center; }
+            .grid { grid-template-columns: 1fr; }
         }
-        .features {
-            margin-top: 60px;
-            text-align: left;
-            background: rgba(255,255,255,0.1);
-            padding: 30px;
-            border-radius: 10px;
-        }
-        .features h3 { margin-bottom: 15px; font-size: 1.3em; }
-        .features ul { list-style: none; }
-        .features li { padding: 8px 0; }
-        .features li:before { content: "✓ "; margin-right: 10px; }
     </style>
 </head>
 <body>
-    <div class="container">
+    <header>
         <h1>🚀 TollMeshCache</h1>
-        <p>Production-ready distributed caching & rate limiting for 7 languages</p>
+        <p>Production-ready distributed caching & rate limiting with 7 language SDKs</p>
+    </header>
 
-        <div class="buttons">
-            <a href="https://github.com/TollMesh/toll-mesh-store/tree/master/docs" class="btn-primary">📚 Full Documentation</a>
-            <a href="https://github.com/TollMesh/toll-mesh-store" class="btn-secondary">⭐ GitHub Repo</a>
+    <div class="container">
+        <nav>
+            <a href="#home" class="nav-link active" data-page="home">Home</a>
+            <a href="#go" class="nav-link" data-page="go">Go Backend</a>
+            <a href="#python" class="nav-link" data-page="python">Python</a>
+            <a href="#nodejs" class="nav-link" data-page="nodejs">Node.js</a>
+            <a href="#java" class="nav-link" data-page="java">Java</a>
+            <a href="#rust" class="nav-link" data-page="rust">Rust</a>
+            <a href="#ruby" class="nav-link" data-page="ruby">Ruby</a>
+            <a href="#csharp" class="nav-link" data-page="csharp">C#</a>
+            <a href="#php" class="nav-link" data-page="php">PHP</a>
+            <a href="#api" class="nav-link" data-page="api">API Reference</a>
+            <a href="#redis" class="nav-link" data-page="redis">vs Redis</a>
+        </nav>
+
+        <!-- HOME PAGE -->
+        <div id="home" class="section active">
+            <h2>Welcome to TollMeshCache</h2>
+            <p>Production-ready distributed caching and coordination layer with built-in rate limiting, replay protection, and CRDT-based convergence.</p>
+
+            <h3>⚡ Features</h3>
+            <div class="grid">
+                <div class="card">
+                    <h3>🔒 Rate Limiting</h3>
+                    <p>Distributed token bucket across cluster nodes with automatic convergence.</p>
+                </div>
+                <div class="card">
+                    <h3>🛡️ Replay Protection</h3>
+                    <p>CRDT-based nonce tracking with automatic cleanup after TTL expiration.</p>
+                </div>
+                <div class="card">
+                    <h3>💾 Distributed Cache</h3>
+                    <p>TTL-based cache with automatic expiration, no central coordinator.</p>
+                </div>
+                <div class="card">
+                    <h3>🌍 7 Languages</h3>
+                    <p>SDKs for Python, Node.js, Java, Rust, Ruby, C#, and PHP.</p>
+                </div>
+                <div class="card">
+                    <h3>🔄 Zero-Config</h3>
+                    <p>Automatic peer discovery and self-healing cluster.</p>
+                </div>
+                <div class="card">
+                    <h3>📊 Production-Ready</h3>
+                    <p>Comprehensive error handling, health checks, and monitoring.</p>
+                </div>
+            </div>
+
+            <h3>🚀 Quick Start</h3>
+            <p>Choose your language from the navigation above to get started.</p>
+
+            <h3>📈 Performance</h3>
+            <table>
+                <tr>
+                    <th>Operation</th>
+                    <th>Throughput</th>
+                    <th>P99 Latency</th>
+                </tr>
+                <tr>
+                    <td>Rate Limit Check</td>
+                    <td>50k ops/sec per node</td>
+                    <td>5-10ms</td>
+                </tr>
+                <tr>
+                    <td>Replay Protection</td>
+                    <td>50k ops/sec per node</td>
+                    <td>5-10ms</td>
+                </tr>
+                <tr>
+                    <td>Cache Get/Set</td>
+                    <td>50k ops/sec per node</td>
+                    <td>5-10ms</td>
+                </tr>
+            </table>
         </div>
 
-        <div class="features">
-            <h3>📚 Language SDKs</h3>
+        <!-- GO BACKEND -->
+        <div id="go" class="section">
+            <h2>Go Backend</h2>
+            <p>TollMeshCache core is built in Go with CRDTs for distributed coordination.</p>
+
+            <h3>Core Components</h3>
+            <h4>GCounter (Grow-only Counter)</h4>
+            <p>Used for distributed rate limiting. Each node maintains its own count; the total is the sum of all node counts.</p>
+            <pre><code>counter := core.NewGCounter("node-1")
+counter.Increment(5)
+total := counter.Value()</code></pre>
+
+            <h4>GSet (Grow-only Set)</h4>
+            <p>Used for replay protection. Distributed set of seen nonces that automatically converges across nodes.</p>
+            <pre><code>set := core.NewGSet()
+set.Add("nonce-123")
+exists := set.Contains("nonce-123")</code></pre>
+
+            <h3>API Operations</h3>
+            <p><strong>Consume:</strong> Rate limiting</p>
+            <pre><code>result, err := meshStore.Consume(ctx, key, limit, window)</code></pre>
+
+            <p><strong>Seen:</strong> Replay protection</p>
+            <pre><code>seen, err := meshStore.Seen(ctx, key, ttl)</code></pre>
+
+            <p><strong>Get/Set:</strong> Caching</p>
+            <pre><code>meshStore.Set(ctx, namespace, key, value, ttl)
+value, exists, err := meshStore.Get(ctx, namespace, key)</code></pre>
+        </div>
+
+        <!-- PYTHON SDK -->
+        <div id="python" class="section">
+            <h2>Python SDK</h2>
+            <p>Async/sync Python client with type hints and retry logic.</p>
+
+            <h3>Installation</h3>
+            <pre><code>pip install tollmeshcache
+pip install tollmeshcache[async]  # For async support</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>from tollmeshcache import Client, AsyncClient, ClientConfig
+from datetime import timedelta
+
+# Sync client
+config = ClientConfig(host='localhost', port=8080)
+client = Client(config)
+
+result = client.consume('user-123', 100, timedelta(minutes=1))
+if result['ok']:
+    print('Request allowed')
+
+# Async client
+async with AsyncClient(config) as client:
+    result = await client.consume('user-123', 100, timedelta(minutes=1))</code></pre>
+
+            <h3>Features</h3>
             <ul>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/go.md" style="color: white; text-decoration: underline;">Go Backend</a> - Core CRDT implementation</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/python.md" style="color: white; text-decoration: underline;">Python</a> - Async/sync with httpx</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/nodejs.md" style="color: white; text-decoration: underline;">Node.js</a> - TypeScript with streaming</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/java.md" style="color: white; text-decoration: underline;">Java</a> - CompletableFuture async</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/rust.md" style="color: white; text-decoration: underline;">Rust</a> - Tokio async</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/ruby.md" style="color: white; text-decoration: underline;">Ruby</a> - Idiomatic patterns</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/csharp.md" style="color: white; text-decoration: underline;">C#</a> - Native async/await</li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/php.md" style="color: white; text-decoration: underline;">PHP</a> - Composer PSR-compliant</li>
+                <li>✅ Sync & async clients</li>
+                <li>✅ Type hints</li>
+                <li>✅ Retry logic with exponential backoff</li>
+                <li>✅ Connection pooling</li>
+                <li>✅ Comprehensive error handling</li>
+            </ul>
+
+            <h3>API Reference</h3>
+            <p><strong>Rate Limiting:</strong></p>
+            <pre><code>result = client.consume(key, limit, window)
+# Returns: {'ok': bool, 'remaining': int, 'reset_at': int}</code></pre>
+
+            <p><strong>Replay Protection:</strong></p>
+            <pre><code>result = client.seen(key, ttl)
+# Returns: {'seen': bool}</code></pre>
+
+            <p><strong>Caching:</strong></p>
+            <pre><code>client.cache_set(namespace, key, value, ttl)
+value, exists = client.cache_get(namespace, key)</code></pre>
+        </div>
+
+        <!-- NODE.JS SDK -->
+        <div id="nodejs" class="section">
+            <h2>Node.js/TypeScript SDK</h2>
+            <p>Full TypeScript support with async/await patterns and streaming.</p>
+
+            <h3>Installation</h3>
+            <pre><code>npm install tollmeshcache
+# or
+yarn add tollmeshcache</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>import { Client, ClientConfig } from 'tollmeshcache';
+
+const config = new ClientConfig({
+  host: 'localhost',
+  port: 8080,
+});
+
+const client = new Client(config);
+
+// Rate limiting
+const result = await client.consume('user-123', 100, 60000);
+if (result.ok) {
+  console.log('Request allowed');
+}
+
+// Async/await
+const value = await client.cacheGet('namespace', 'key');</code></pre>
+
+            <h3>Features</h3>
+            <ul>
+                <li>✅ Full TypeScript support</li>
+                <li>✅ Async/await patterns</li>
+                <li>✅ Streaming for large values</li>
+                <li>✅ Type-safe error handling</li>
+                <li>✅ Connection pooling</li>
             </ul>
         </div>
 
-        <div class="features" style="margin-top: 20px;">
-            <h3>🎯 Core Features</h3>
+        <!-- JAVA SDK -->
+        <div id="java" class="section">
+            <h2>Java SDK</h2>
+            <p>Sync & async clients with OkHttp3 and CompletableFuture.</p>
+
+            <h3>Installation</h3>
+            <pre><code>&lt;dependency&gt;
+  &lt;groupId&gt;com.tollmesh&lt;/groupId&gt;
+  &lt;artifactId&gt;tollmeshcache&lt;/artifactId&gt;
+  &lt;version&gt;1.0.0&lt;/version&gt;
+&lt;/dependency&gt;</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>import com.tollmesh.store.*;
+import java.time.Duration;
+
+ClientConfig config = new ClientConfig()
+  .setHost("localhost")
+  .setPort(8080);
+
+Client client = new Client(config);
+
+// Rate limiting
+ConsumeResult result = client.consume("user-123", 100, Duration.ofMinutes(1));
+if (result.ok) {
+  System.out.println("Request allowed");
+}
+
+client.close();</code></pre>
+
+            <h3>Async Usage</h3>
+            <pre><code>AsyncClient asyncClient = new AsyncClient(config);
+
+asyncClient.consume("user-123", 100, Duration.ofMinutes(1))
+  .thenAccept(result -> {
+    if (result.ok) {
+      System.out.println("Request allowed");
+    }
+  });</code></pre>
+        </div>
+
+        <!-- RUST SDK -->
+        <div id="rust" class="section">
+            <h2>Rust SDK</h2>
+            <p>Full async/await with tokio and type-safe error handling.</p>
+
+            <h3>Installation</h3>
+            <pre><code>[dependencies]
+tollmeshcache = "1.0"
+tokio = { version = "1", features = ["full"] }</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>use tollmeshcache::{Client, ClientConfig};
+use std::time::Duration;
+
+#[tokio::main]
+async fn main() -> Result<(), Box<dyn std::error::Error>> {
+  let config = ClientConfig::new()
+    .with_host("localhost")
+    .with_port(8080);
+
+  let client = Client::new(config)?;
+
+  // Rate limiting
+  let result = client.consume("user-123", 100, Duration::from_secs(60)).await?;
+  if result.ok {
+    println!("Request allowed");
+  }
+
+  Ok(())
+}</code></pre>
+
+            <h3>Features</h3>
             <ul>
-                <li>✅ Distributed Rate Limiting (CRDT-based)</li>
-                <li>✅ Replay Protection with automatic cleanup</li>
-                <li>✅ TTL-based Distributed Caching</li>
-                <li>✅ Zero-config, self-healing cluster</li>
-                <li>✅ Production-grade error handling</li>
+                <li>✅ Full async/await with tokio</li>
+                <li>✅ Type-safe error handling</li>
+                <li>✅ Zero-cost abstractions</li>
+                <li>✅ Connection pooling</li>
+                <li>✅ Exponential backoff retry</li>
             </ul>
         </div>
 
-        <div class="features" style="margin-top: 20px;">
-            <h3>📖 Reference</h3>
+        <!-- RUBY SDK -->
+        <div id="ruby" class="section">
+            <h2>Ruby SDK</h2>
+            <p>HTTPClient-based with idiomatic Ruby patterns.</p>
+
+            <h3>Installation</h3>
+            <pre><code>gem install tollmeshcache
+# or in Gemfile:
+gem 'tollmeshcache'</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>require 'tollmeshcache'
+
+config = TollMeshCache::ClientConfig.new(
+  host: 'localhost',
+  port: 8080
+)
+
+client = TollMeshCache::Client.new(config)
+
+# Rate limiting
+result = client.consume('user-123', 100, 60000)
+if result[:ok]
+  puts 'Request allowed'
+end</code></pre>
+
+            <h3>Features</h3>
             <ul>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/api-reference.md" style="color: white; text-decoration: underline;">API Reference</a></li>
-                <li><a href="https://github.com/TollMesh/toll-mesh-store/blob/master/docs/vs-redis.md" style="color: white; text-decoration: underline;">vs Redis Comparison</a></li>
+                <li>✅ HTTPClient gem for reliable connections</li>
+                <li>✅ Idiomatic Ruby patterns</li>
+                <li>✅ Exception-based error handling</li>
+                <li>✅ Connection pooling</li>
+                <li>✅ Hash-based responses</li>
             </ul>
+        </div>
+
+        <!-- C# SDK -->
+        <div id="csharp" class="section">
+            <h2>C# SDK</h2>
+            <p>Native async/await with multi-target framework support.</p>
+
+            <h3>Installation</h3>
+            <pre><code>dotnet add package TollMeshCache</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>using TollMeshCache;
+using System;
+using System.Threading.Tasks;
+
+class Program {
+  static async Task Main() {
+    var config = new ClientConfig {
+      Host = "localhost",
+      Port = 8080
+    };
+
+    using var client = new Client(config);
+
+    // Rate limiting
+    var result = await client.ConsumeAsync(
+      "user-123",
+      100,
+      TimeSpan.FromMinutes(1)
+    );
+
+    if (result.Ok) {
+      Console.WriteLine("Request allowed");
+    }
+  }
+}</code></pre>
+
+            <h3>Features</h3>
+            <ul>
+                <li>✅ Native async/await</li>
+                <li>✅ Multi-target (.NET 6, 7, 8, Standard 2.1)</li>
+                <li>✅ Strong typing with generics</li>
+                <li>✅ HttpClient pooling</li>
+                <li>✅ Comprehensive error handling</li>
+            </ul>
+        </div>
+
+        <!-- PHP SDK -->
+        <div id="php" class="section">
+            <h2>PHP SDK</h2>
+            <p>Guzzle HTTP client with PSR compliance.</p>
+
+            <h3>Installation</h3>
+            <pre><code>composer require toll-mesh/cache</code></pre>
+
+            <h3>Quick Start</h3>
+            <pre><code>&lt;?php
+require_once 'vendor/autoload.php';
+
+use TollMesh\Cache\Client;
+use TollMesh\Cache\ClientConfig;
+
+$config = new ClientConfig([
+  'host' => 'localhost',
+  'port' => 8080,
+]);
+
+$client = new Client($config);
+
+// Rate limiting
+$result = $client->consume('user-123', 100, 60000);
+if ($result['ok']) {
+  echo "Request allowed\n";
+}
+?></code></pre>
+
+            <h3>Features</h3>
+            <ul>
+                <li>✅ Guzzle HTTP client</li>
+                <li>✅ PSR-compliant</li>
+                <li>✅ Connection pooling</li>
+                <li>✅ Comprehensive error handling</li>
+                <li>✅ Array-based responses</li>
+            </ul>
+        </div>
+
+        <!-- API REFERENCE -->
+        <div id="api" class="section">
+            <h2>API Reference</h2>
+            <p>Complete API documentation for all SDKs.</p>
+
+            <h3>Core Operations</h3>
+
+            <h4>1. consume(key, limit, window) - Rate Limiting</h4>
+            <p>Consume tokens from a distributed rate limiter.</p>
+            <pre><code>Parameters:
+- key (string): Rate limit bucket key
+- limit (integer): Maximum tokens in window
+- window (duration): Time window
+
+Returns: {ok, remaining, reset_at}</code></pre>
+
+            <h4>2. seen(key, ttl) - Replay Protection</h4>
+            <p>Check if a nonce has been seen before.</p>
+            <pre><code>Parameters:
+- key (string): Nonce or request ID
+- ttl (duration): Memory duration
+
+Returns: {seen: boolean}</code></pre>
+
+            <h4>3. cache_set(namespace, key, value, ttl) - Cache Storage</h4>
+            <p>Store a value in the distributed cache.</p>
+
+            <h4>4. cache_get(namespace, key) - Cache Retrieval</h4>
+            <p>Retrieve a value from the distributed cache.</p>
+
+            <h4>5. health() - Health Check</h4>
+            <p>Check cluster health and node status.</p>
+
+            <h4>6. get_peers() - List Cluster Peers</h4>
+            <p>Get list of connected cluster nodes.</p>
+
+            <h3>Error Codes</h3>
+            <table>
+                <tr>
+                    <th>Code</th>
+                    <th>Name</th>
+                    <th>Description</th>
+                </tr>
+                <tr>
+                    <td>0</td>
+                    <td>OK</td>
+                    <td>Success</td>
+                </tr>
+                <tr>
+                    <td>400</td>
+                    <td>INVALID_REQUEST</td>
+                    <td>Invalid parameters</td>
+                </tr>
+                <tr>
+                    <td>429</td>
+                    <td>RATE_LIMITED</td>
+                    <td>Rate limit exceeded</td>
+                </tr>
+                <tr>
+                    <td>500</td>
+                    <td>INTERNAL_ERROR</td>
+                    <td>Server error</td>
+                </tr>
+            </table>
+        </div>
+
+        <!-- VS REDIS -->
+        <div id="redis" class="section">
+            <h2>TollMeshCache vs Redis</h2>
+            <p>A detailed comparison for choosing the right solution.</p>
+
+            <h3>Feature Comparison</h3>
+            <table>
+                <tr>
+                    <th>Feature</th>
+                    <th>TollMeshCache</th>
+                    <th>Redis</th>
+                </tr>
+                <tr>
+                    <td>Language Support</td>
+                    <td>✅ 7 languages</td>
+                    <td>⚠️ CLI-based</td>
+                </tr>
+                <tr>
+                    <td>Rate Limiting</td>
+                    <td>✅ Built-in</td>
+                    <td>⚠️ Custom logic</td>
+                </tr>
+                <tr>
+                    <td>Replay Protection</td>
+                    <td>✅ Built-in</td>
+                    <td>⚠️ Custom logic</td>
+                </tr>
+                <tr>
+                    <td>No Central Server</td>
+                    <td>✅ Peer-to-peer</td>
+                    <td>❌ Single master</td>
+                </tr>
+                <tr>
+                    <td>CRDT Convergence</td>
+                    <td>✅ Automatic</td>
+                    <td>⚠️ Requires Sentinel</td>
+                </tr>
+                <tr>
+                    <td>Type Safety</td>
+                    <td>✅ Native types</td>
+                    <td>⚠️ String-based</td>
+                </tr>
+                <tr>
+                    <td>Throughput</td>
+                    <td>⚠️ 50k/node</td>
+                    <td>✅ 100k+ ops</td>
+                </tr>
+            </table>
+
+            <h3>When to Use TollMeshCache</h3>
+            <ul>
+                <li>✅ Distributed rate limiting without central server</li>
+                <li>✅ Replay protection and nonce tracking</li>
+                <li>✅ Edge computing and distributed caches</li>
+                <li>✅ Microservices coordination</li>
+                <li>✅ Zero-config deployment</li>
+            </ul>
+
+            <h3>When to Use Redis</h3>
+            <ul>
+                <li>✅ High throughput (100k+ ops/sec)</li>
+                <li>✅ Complex data structures (sorted sets, streams)</li>
+                <li>✅ Pub/Sub messaging</li>
+                <li>✅ Session management at scale</li>
+                <li>✅ Real-time analytics</li>
+            </ul>
+
+            <div class="feature-box">
+                <strong>Best Practice:</strong> Use both! TollMeshCache for distributed rate limiting & replay protection, Redis for high-frequency caching & real-time features. They're complementary, not competitive.
+            </div>
         </div>
     </div>
 
+    <footer>
+        <p>&copy; 2024 TollMesh. <a href="https://github.com/TollMesh/toll-mesh-store">GitHub</a> | <a href="https://github.com/TollMesh/toll-mesh-store/blob/master/LICENSE">Apache 2.0 License</a></p>
+    </footer>
+
     <script>
-        // Redirect to actual documentation site
-        // Uncomment when Jekyll site is ready
-        // window.location.href = '/toll-mesh-store/docs/';
+        document.querySelectorAll('.nav-link').forEach(link => {
+            link.addEventListener('click', (e) => {
+                e.preventDefault();
+                const page = link.dataset.page;
+
+                // Hide all sections
+                document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+
+                // Remove active from all nav links
+                document.querySelectorAll('.nav-link').forEach(l => l.classList.remove('active'));
+
+                // Show selected section and mark nav as active
+                document.getElementById(page).classList.add('active');
+                link.classList.add('active');
+
+                // Scroll to top
+                window.scrollTo(0, 0);
+            });
+        });
     </script>
 </body>
 </html>

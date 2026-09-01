@@ -1,187 +1,115 @@
 ---
 layout: default
-title: Home
+title: TollMeshCache
 nav_order: 1
-description: "Production-ready 7-language SDK for distributed coordination"
 ---
 
 # TollMeshCache
-## Distributed Coordination & Caching for Every Platform
 
-**Production-ready distributed coordination system** with built-in job queues, sorted sets, and streams. **7 language SDKs** with identical APIs, async support, and enterprise features.
+Production-ready distributed coordination and caching system with 7-language SDK support. No central coordinator required.
 
----
-
-## ✨ Status: Production Ready
-
-**All 7 SDKs published and live on official package managers:**
-
-| Language | Package Manager | Status | Install |
-|----------|-----------------|--------|---------|
-| **Python** | PyPI | ✅ Published | `pip install tollmeshcache` |
-| **Node.js/TypeScript** | npm | ✅ Published | `npm install @tollmesh/tollmeshcache` |
-| **Rust** | crates.io | ✅ Published | `cargo add tollmeshcache` |
-| **Ruby** | RubyGems | ✅ Published | `gem install tollmeshcache` |
-| **C#/.NET** | NuGet | ✅ Published | `dotnet add package TollMeshCache` |
-| **PHP** | Packagist | ✅ Published | `composer require toll-mesh/cache` |
-| **Java** | Maven Central | ✅ Published | Add dependency to pom.xml |
+{% include theme-toggle.html %}
+{% include language-switcher.html %}
 
 ---
 
-## 🎯 Three Core Features
+## Production Status
 
-### 1️⃣ Job Queues
-Distributed task processing with **exactly-once semantics**, priority levels, and automatic retries.
+All 7 SDKs published and production-ready on official package managers:
 
-```python
-# Enqueue a job
-client.enqueue('tasks', 'job-id', priority=5)
-
-# Claim and process
-job = client.claim('tasks')
-client.complete('tasks', job.id)
-```
-
-**Use Cases:** Background jobs, async task processing, worker coordination
+| Language | Package Manager | Version | Status |
+|----------|-----------------|---------|--------|
+| Python | PyPI | 1.0.0 | Live |
+| Node.js/TypeScript | npm | 1.0.0 | Live |
+| Rust | crates.io | 1.0.0 | Live |
+| Ruby | RubyGems | 1.0.0 | Live |
+| C#/.NET | NuGet | 1.0.0 | Live |
+| PHP | Packagist | 1.0.0 | Live |
+| Java | Maven Central | 1.0.0 | Live |
 
 ---
 
-### 2️⃣ Sorted Sets
-**O(log n) leaderboards and rankings** using skip lists. Perfect for scoring systems, rankings, and time-series data.
+## Core Features (Complete)
 
-```python
-# Add members with scores
-client.zadd('leaderboard', 100, 'alice')
-client.zadd('leaderboard', 150, 'bob')
+### Job Queues
+Distributed task processing with exactly-once semantics, priority levels, and automatic retries.
 
-# Get rankings
-top_10 = client.zrange('leaderboard', 0, 10)
-```
+**Key Capabilities:**
+- FIFO and priority-based processing
+- Exactly-once delivery guarantees
+- Automatic retry with exponential backoff
+- Dead-letter queue for failed jobs
+- Distributed coordination without central broker
 
-**Use Cases:** Game leaderboards, top-N queries, scoring systems, rate limits
-
----
-
-### 3️⃣ Streams
-**Append-only event logs** with consumer groups for reliable event processing and replay.
-
-```python
-# Publish events
-client.xadd('events', {'event': 'order', 'user': 'alice'})
-
-# Process with consumer groups
-messages = client.xreadgroup('analytics', 'worker-1', 'events')
-```
-
-**Use Cases:** Event sourcing, audit logs, message queues, activity feeds
+**Available in:** All 7 languages with identical APIs
 
 ---
 
-## 🚀 Why TollMeshCache?
+### Sorted Sets
+O(log n) leaderboards and rankings using skip list data structures. Perfect for scoring systems and range queries.
 
-### ✅ **No Central Coordinator**
-CRDT-based design means no single point of failure. Every node has full capability.
-
-### ✅ **Async/Await in All Languages**
-Native async support: Python asyncio, Node.js Promises, Rust Tokio, Java CompletableFuture, C# Tasks, PHP Fibers, Ruby Async.
-
-### ✅ **Identical APIs**
-Learn once, use everywhere. Same patterns across all 7 languages.
-
-### ✅ **Production Ready**
-- Comprehensive error handling
-- Automatic retries with exponential backoff
-- Type-safe implementations
-- Full test coverage
-- GPG-signed releases
-
-### ✅ **Enterprise Features**
-- Rate limiting (distributed token bucket)
-- Replay protection (nonce tracking)
+**Key Capabilities:**
+- O(log n) insert, update, and range queries
+- CRDT-based conflict resolution
+- Automatic score aggregation
+- Range queries by score or rank
 - TTL-based expiration
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Streams
+Append-only event logs with consumer groups for reliable event processing and replay.
+
+**Key Capabilities:**
+- Append-only immutable event log
 - Consumer group coordination
-- Health monitoring
+- Offset tracking and liveness detection
+- Event replay and rebalancing
+- TTL retention policies
+
+**Available in:** All 7 languages with identical APIs
 
 ---
 
-## 📚 Documentation
-
-### Getting Started
-- **[Quick Start Guides](guides/)** - 5-minute setup for each language
-- **[API Reference](api-reference.md)** - Complete endpoint documentation
-
-### Language Guides
-- **[Python SDK](python.md)** - Full async/sync support
-- **[Node.js SDK](nodejs.md)** - TypeScript native
-- **[Rust SDK](rust.md)** - Zero-cost abstractions with Tokio
-- **[Ruby SDK](ruby.md)** - Idiomatic Ruby patterns
-- **[C# SDK](csharp.md)** - .NET 6+ with native async/await
-- **[PHP SDK](php.md)** - Composer, PSR-4 compliant
-- **[Java SDK](java.md)** - Maven Central, Spring Boot ready
-
-### Architecture & Comparison
-- **[vs Redis](vs-redis.md)** - Feature comparison and when to use what
-- **[Architecture](architecture.md)** - CRDT design, consistency model
-- **[Publishing Guide](publishing-guide.md)** - CI/CD automation across 7 languages
-
----
-
-## 💡 Use Cases
-
-### Real-time Analytics
-Process millions of events with streams and consumer groups.
-
-### Gaming Leaderboards
-Sorted sets provide O(log n) leaderboard updates with strong consistency.
-
-### Rate Limiting
-Distributed token bucket prevents abuse across microservices without central coordination.
-
-### Job Processing
-Exactly-once semantics guarantee no duplicate processing of tasks.
-
-### Replay Protection
-Built-in nonce tracking prevents duplicate payments and double-clicks.
-
----
-
-## 🛠️ Installation by Language
+## Installation
 
 ### Python
 ```bash
 pip install tollmeshcache
 ```
-📖 [Python Docs](python.md)
+[Python Documentation](python.md)
 
 ### Node.js / TypeScript
 ```bash
 npm install @tollmesh/tollmeshcache
 ```
-📖 [Node.js Docs](nodejs.md)
+[Node.js Documentation](nodejs.md)
 
 ### Rust
 ```bash
 cargo add tollmeshcache
 ```
-📖 [Rust Docs](rust.md)
+[Rust Documentation](rust.md)
 
 ### Ruby
 ```bash
 gem install tollmeshcache
 ```
-📖 [Ruby Docs](ruby.md)
+[Ruby Documentation](ruby.md)
 
 ### C# / .NET
 ```bash
 dotnet add package TollMeshCache
 ```
-📖 [C# Docs](csharp.md)
+[C# Documentation](csharp.md)
 
 ### PHP
 ```bash
 composer require toll-mesh/cache
 ```
-📖 [PHP Docs](php.md)
+[PHP Documentation](php.md)
 
 ### Java
 ```xml
@@ -191,31 +119,91 @@ composer require toll-mesh/cache
     <version>1.0.0</version>
 </dependency>
 ```
-📖 [Java Docs](java.md)
+[Java Documentation](java.md)
 
 ---
 
-## 🤝 Contributing
+## Architecture
 
-Have ideas? Found a bug? 
-- **Report Issues:** [GitHub Issues](https://github.com/TollMesh/toll-mesh-store/issues)
-- **Documentation:** Help improve docs in `/docs`
-- **SDKs:** Add features, fix bugs, improve performance
+**Key Design Principles:**
+- CRDT-based consistency: Eventual consistency without central coordinator
+- Lamport clocks: Distributed ordering and causality tracking
+- Skip lists: O(log n) sorted operations
+- Append-only logs: Immutable event history
 
----
-
-## 📄 License
-
-All SDKs are released under **Apache License 2.0**. Free for commercial and personal use.
+**No Single Point of Failure**
+Every node operates independently with automatic convergence.
 
 ---
 
-## 🔗 Links
+## Use Cases
 
-- **GitHub:** [TollMesh/toll-mesh-store](https://github.com/TollMesh/toll-mesh-store)
-- **Package Status:** See table above
-- **API Docs:** [Complete Reference](api-reference.md)
+**Rate Limiting** - Distributed token bucket for API throttling across microservices
+
+**Gaming Leaderboards** - Real-time player rankings with O(log n) updates
+
+**Job Processing** - Background task queues with exactly-once semantics
+
+**Event Sourcing** - Immutable event logs for audit and replay
+
+**Replay Protection** - Built-in nonce tracking prevents duplicate operations
 
 ---
 
-**Ready to build distributed systems without a coordinator?** Pick your language above and get started! 🚀
+## Documentation
+
+- [API Reference](api-reference.md) - Complete endpoint documentation
+- [Architecture Guide](architecture.md) - Design and consistency model
+- [vs Redis](vs-redis.md) - Feature comparison and selection criteria
+- [Publishing Guide](publishing-guide.md) - CI/CD automation for 7 languages
+
+---
+
+## Quick Examples
+
+### Rate Limiting (Python)
+```python
+from tollmeshcache import Client
+from datetime import timedelta
+
+client = Client('localhost:8080')
+result = client.consume('api-limit', limit=100, window=timedelta(minutes=1))
+
+if result.ok:
+    print(f"Allowed. Remaining: {result.remaining}")
+```
+
+### Leaderboard (Node.js)
+```typescript
+import { Client } from '@tollmesh/tollmeshcache';
+
+const client = new Client({ host: 'localhost' });
+
+await client.zadd('leaderboard', 100, 'alice');
+await client.zadd('leaderboard', 150, 'bob');
+
+const top10 = await client.zrange('leaderboard', 0, 10);
+```
+
+### Event Processing (Rust)
+```rust
+let client = Client::new("localhost:8080").await?;
+
+client.xadd("events", json!({"event": "order", "user": "alice"})).await?;
+let events = client.xrange("events", "-", "+").await?;
+```
+
+---
+
+## Contributing
+
+Report issues or contribute improvements:
+- [GitHub Repository](https://github.com/TollMesh/toll-mesh-store)
+- [Issue Tracker](https://github.com/TollMesh/toll-mesh-store/issues)
+
+---
+
+## License
+
+Apache License 2.0 - Free for commercial and personal use.
+

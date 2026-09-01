@@ -7,11 +7,13 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   publish:
     name: Publish to NuGet
     runs-on: ubuntu-latest
+    environment: production
 
     steps:
       - uses: actions/checkout@v4
@@ -31,9 +33,11 @@ jobs:
           cd sdks/csharp/
           dotnet pack --configuration Release
 
-      - name: Publish to NuGet
+      - name: Publish to NuGet (Trusted Publishing)
         run: |
           cd sdks/csharp/
           dotnet nuget push bin/Release/*.nupkg \
             --source https://api.nuget.org/v3/index.json \
             --api-key ${{ secrets.NUGET_API_KEY }}
+        env:
+          NUGET_AUTH_TOKEN: ${{ secrets.GITHUB_TOKEN }}

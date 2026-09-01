@@ -2,7 +2,6 @@
 layout: default
 title: Java SDK
 nav_order: 5
-parent: Home
 ---
 
 # Java SDK

@@ -2,7 +2,6 @@
 layout: default
 title: PHP SDK
 nav_order: 9
-parent: Home
 ---
 
 # PHP SDK

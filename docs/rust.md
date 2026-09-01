@@ -2,7 +2,6 @@
 layout: default
 title: Rust SDK
 nav_order: 6
-parent: Home
 ---
 
 # Rust SDK

@@ -2,7 +2,6 @@
 layout: default
 title: Python SDK
 nav_order: 3
-parent: Home
 ---
 
 # Python SDK

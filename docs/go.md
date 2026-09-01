@@ -2,7 +2,6 @@
 layout: default
 title: Go Backend
 nav_order: 2
-parent: Home
 ---
 
 # Go Backend

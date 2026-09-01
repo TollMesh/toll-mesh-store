@@ -2,7 +2,6 @@
 layout: default
 title: API Reference
 nav_order: 10
-parent: Home
 ---
 
 # API Reference

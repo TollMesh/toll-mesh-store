@@ -16,24 +16,40 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Setup Java
+      - name: Setup JDK
         uses: actions/setup-java@v4
         with:
           java-version: '11'
           distribution: 'temurin'
-          cache: maven
 
-      - name: Import GPG key
-        run: |
-          mkdir -p ~/.gnupg
-          echo "${{ secrets.MAVEN_GPG_PRIVATE_KEY }}" | base64 -d | gpg --import --batch
-
-      - name: Deploy to Maven Central
+      - name: Build with Maven
         run: |
           cd sdks/java/
-          mvn clean deploy -P release \
-            -Dgpg.passphrase="${{ secrets.MAVEN_GPG_PASSPHRASE }}" \
-            -DsignatureAlgorithm=SHA256withRSA
+          mvn clean package -DskipTests
+
+      - name: Create Maven Settings
+        run: |
+          mkdir -p ~/.m2
+          cat > ~/.m2/settings.xml << 'MVNSETTINGS'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
+                    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                    xsi:schemaLocation="http://maven.apache.org/SETTINGS/1.0.0
+                                        http://maven.apache.org/xsd/settings-1.0.0.xsd">
+            <servers>
+              <server>
+                <id>central</id>
+                <username>${{ secrets.SONATYPE_USERNAME }}</username>
+                <password>${{ secrets.SONATYPE_PASSWORD }}</password>
+              </server>
+            </servers>
+          </settings>
+          MVNSETTINGS
+
+      - name: Publish to Maven Central
+        run: |
+          cd sdks/java/
+          mvn deploy -DskipTests
         env:
           SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
           SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}

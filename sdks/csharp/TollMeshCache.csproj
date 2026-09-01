@@ -17,6 +17,7 @@
     <RepositoryUrl>https://github.com/toll-mesh/store</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>cache;crdt;distributed;rate-limiting;coordination</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
   </PropertyGroup>
 
   <ItemGroup>

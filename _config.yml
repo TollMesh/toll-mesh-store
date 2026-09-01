@@ -1,36 +1,26 @@
 # Site Configuration
 title: TollMeshCache
-description: Production-ready distributed coordination and caching for 7 languages
+description: Production-ready distributed coordination and caching
 url: https://toll-mesh.github.io
 baseurl: /store
-remote_theme: pmarsceill/just-the-docs
+
+# Theme
+theme: just-the-docs
 
 # Build settings
 markdown: kramdown
 highlighter: rouge
-permalink: /:title/
 
 # Plugins
 plugins:
-  - jekyll-remote-theme
   - jekyll-seo-tag
-  - jekyll-gist
 
-# Collections
-collections:
-  guides:
-    output: true
-    permalink: /guides/:name/
-
-# Just the Docs theme settings
-color_scheme: light
+# Search
 search_enabled: true
 heading_anchors: true
-aux_links:
-  GitHub Repository:
-    - https://github.com/TollMesh/toll-mesh-store
-  Issue Tracker:
-    - https://github.com/TollMesh/toll-mesh-store/issues
 
 # Footer
-footer_content: "Copyright 2026 TollMesh. Apache License 2.0"
+footer_content: "Copyright 2026 TollMesh. Apache License 2.0."
+
+# Build timestamp for cache busting
+timestamp: 2026-09-01T14:00:00Z

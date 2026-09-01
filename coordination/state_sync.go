@@ -7,7 +7,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/core"
+	"github.com/toll-mesh/store/core"
 )
 
 // StateSync handles CRDT state synchronization between nodes

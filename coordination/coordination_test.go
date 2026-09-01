@@ -4,7 +4,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/core"
+	"github.com/toll-mesh/store/core"
 )
 
 // TestPeerManager tests the peer manager functionality

@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/core"
+	"github.com/toll-mesh/store/core"
 )
 
 // PeerManager handles peer discovery and health monitoring

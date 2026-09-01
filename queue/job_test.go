@@ -294,16 +294,25 @@ func TestQueueStats(t *testing.T) {
 	jm := NewJobManager("node-1")
 	defer jm.Stop()
 
-	// Enqueue jobs
+	// Enqueue 3 jobs
 	jm.Enqueue("test-queue", []byte("1"), DefaultJobOptions())
 	jm.Enqueue("test-queue", []byte("2"), DefaultJobOptions())
-	job3, _ := jm.Enqueue("test-queue", []byte("3"), DefaultJobOptions())
+	jm.Enqueue("test-queue", []byte("3"), DefaultJobOptions())
 
-	// Claim one
-	jm.ClaimJob("test-queue", "worker-1")
+	// Claim two, leaving 1 pending
+	claimedA, err := jm.ClaimJob("test-queue", "worker-1")
+	if err != nil {
+		t.Fatalf("claim A failed: %v", err)
+	}
+	_, err = jm.ClaimJob("test-queue", "worker-2")
+	if err != nil {
+		t.Fatalf("claim B failed: %v", err)
+	}
 
-	// Complete one
-	jm.CompleteJob("test-queue", job3.ID, []byte("result"))
+	// Complete one of the two claimed jobs, leaving 1 processing
+	if err := jm.CompleteJob("test-queue", claimedA.ID, []byte("result")); err != nil {
+		t.Fatalf("complete failed: %v", err)
+	}
 
 	// Check stats
 	stats, _ := jm.GetQueueStats("test-queue")

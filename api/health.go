@@ -5,7 +5,7 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/coordination"
+	"github.com/toll-mesh/store/coordination"
 )
 
 // HealthChecker provides health check functionality

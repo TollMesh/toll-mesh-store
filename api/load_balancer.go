@@ -6,7 +6,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/TollMesh/toll-mesh-store/core"
+	"github.com/toll-mesh/store/core"
 )
 
 // LoadBalancerConfig holds configuration for load balancing

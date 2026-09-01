@@ -187,17 +187,18 @@ func (zs *SortedSet) RangeByRank(start, stop int64) []*SortedSetMember {
 	return members
 }
 
-// RevRange returns members in descending order
-func (zs *SortedSet) RevRange(min, max float64, limit int64) []*SortedSetMember {
+// RevRange returns members within score range [min, max], highest score
+// first. Following Redis's ZREVRANGEBYSCORE convention, the upper bound
+// (max) is the first parameter and the lower bound (min) is the second.
+func (zs *SortedSet) RevRange(max, min float64, limit int64) []*SortedSetMember {
 	zs.mu.RLock()
 	defer zs.mu.RUnlock()
 
-	nodes := zs.Members.Range(min, max, limit)
+	nodes := zs.Members.RangeDesc(min, max, limit)
 	var members []*SortedSetMember
 
-	// Reverse the order
-	for i := len(nodes) - 1; i >= 0; i-- {
-		m := zs.MemberMap[nodes[i].Member]
+	for _, node := range nodes {
+		m := zs.MemberMap[node.Member]
 		if m != nil && !m.Tombstone {
 			members = append(members, m)
 		}

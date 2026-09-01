@@ -116,26 +116,13 @@ func (sl *SkipList) Insert(member string, score float64) bool {
 	return true
 }
 
-// Search finds a member and returns its score
+// Search finds a member by linear scan and returns its score.
+// The skip list is ordered by (score, member), so locating a member by
+// name alone (without knowing its score) cannot use skip-optimized descent.
 func (sl *SkipList) Search(member string) (float64, bool) {
 	sl.mu.RLock()
 	defer sl.mu.RUnlock()
-
-	x := sl.header
-	for i := sl.level - 1; i >= 0; i-- {
-		for x.Forward[i] != nil &&
-			(x.Forward[i].Score < 0 ||
-				(x.Forward[i].Score == 0 && x.Forward[i].Member < member)) {
-			x = x.Forward[i]
-		}
-	}
-
-	x = x.Forward[0]
-	if x != nil && x.Member == member {
-		return x.Score, true
-	}
-
-	return 0, false
+	return sl.searchLocked(member)
 }
 
 // Delete removes a member from the skip list
@@ -208,6 +195,27 @@ func (sl *SkipList) Range(min, max float64, limit int64) []*SkipListNode {
 	return nodes
 }
 
+// RangeDesc returns up to limit members within score range [min, max],
+// ordered from highest to lowest score, by walking backward from the tail.
+func (sl *SkipList) RangeDesc(min, max float64, limit int64) []*SkipListNode {
+	sl.mu.RLock()
+	defer sl.mu.RUnlock()
+
+	var nodes []*SkipListNode
+
+	for x := sl.tail; x != nil && x != sl.header && int64(len(nodes)) < limit; x = x.Backward {
+		if x.Score > max {
+			continue
+		}
+		if x.Score < min {
+			break
+		}
+		nodes = append(nodes, x)
+	}
+
+	return nodes
+}
+
 // RangeByRank returns members by rank (index) within range [start, stop]
 func (sl *SkipList) RangeByRank(start, stop int64) []*SkipListNode {
 	sl.mu.RLock()
@@ -230,27 +238,38 @@ func (sl *SkipList) RangeByRank(start, stop int64) []*SkipListNode {
 	return nodes
 }
 
-// Rank returns the rank (index) of a member
+// Rank returns the rank (0-based index in ascending score order) of a
+// member. Since the list is ordered by (score, member), the member's own
+// score is required to descend the list correctly, so it is looked up by
+// linear scan first.
+// Rank walks level 0 (a complete ordered linked list) rather than
+// descending multiple levels: a multi-level descent requires a per-pointer
+// "span" (number of level-0 nodes skipped) to count rank correctly, which
+// this skip list does not track, so counting +1 per hop at higher levels
+// silently undercounts. This makes Rank O(n) rather than O(log n); Insert,
+// Delete, and Range are unaffected and remain O(log n).
 func (sl *SkipList) Rank(member string) (int64, bool) {
 	sl.mu.RLock()
 	defer sl.mu.RUnlock()
 
 	var rank int64
-	x := sl.header
+	for x := sl.header.Forward[0]; x != nil; x = x.Forward[0] {
+		if x.Member == member {
+			return rank, true
+		}
+		rank++
+	}
 
-	for i := sl.level - 1; i >= 0; i-- {
-		for x.Forward[i] != nil && x.Forward[i].Member != member &&
-			(x.Forward[i].Score < 0 || x.Forward[i].Member < member) {
-			rank += 1
-			x = x.Forward[i]
+	return 0, false
+}
+
+// searchLocked is Search without acquiring the lock; callers must hold it.
+func (sl *SkipList) searchLocked(member string) (float64, bool) {
+	for x := sl.header.Forward[0]; x != nil; x = x.Forward[0] {
+		if x.Member == member {
+			return x.Score, true
 		}
 	}
-
-	x = x.Forward[0]
-	if x != nil && x.Member == member {
-		return rank, true
-	}
-
 	return 0, false
 }
 

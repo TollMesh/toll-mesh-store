@@ -38,3 +38,11 @@ type ClusterConfig struct {
 	Nodes         []Node
 	EncryptionKey []byte
 }
+
+// MeshStoreState is a serializable snapshot of a MeshStore's CRDT state,
+// used by the coordination package to gossip and merge state between peers.
+type MeshStoreState struct {
+	RateLimiters     map[string]interface{}
+	ReplayProtection map[string]bool
+	Cache            map[string]map[string][]byte
+}

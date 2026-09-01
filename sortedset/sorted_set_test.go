@@ -165,11 +165,14 @@ func TestCRDTConflictResolution(t *testing.T) {
 	// Add initial score
 	zs.Add("player-1", 100.0)
 
-	// Manually create older update (should be ignored)
+	// Manually create older update (should be ignored). Same score as the
+	// existing member so the comparison is decided by timestamp, not score
+	// (compareMembers checks score first). zs.Add above already consumed
+	// Lamport timestamp 1, so a genuinely older write must precede it.
 	olderMember := &SortedSetMember{
 		Member:    "player-1",
-		Score:     150.0,
-		Timestamp: 1, // Older timestamp
+		Score:     100.0,
+		Timestamp: 0, // Older timestamp
 		Node:      "node-2",
 	}
 

@@ -155,7 +155,7 @@ public class Client implements AutoCloseable {
 
             return executeRequest(request, responseType);
         } catch (IOException e) {
-            throw new TollMeshException(ErrorCode.INTERNAL, "Failed to serialize request: " + e.getMessage());
+            throw new TollMeshException(ErrorCode.INTERNAL, "Failed to serialize request: " + e.getMessage(), e);
         }
     }
 
@@ -182,7 +182,7 @@ public class Client implements AutoCloseable {
 
             return mapper.readValue(body, responseType);
         } catch (IOException e) {
-            throw new TollMeshException(ErrorCode.UNAVAILABLE, "Request failed: " + e.getMessage());
+            throw new TollMeshException(ErrorCode.UNAVAILABLE, "Request failed: " + e.getMessage(), e);
         }
     }
 
@@ -194,7 +194,7 @@ public class Client implements AutoCloseable {
             String message = (String) error.getOrDefault("message", "Error " + code);
             throw new TollMeshException(ErrorCode.fromCode(code), message);
         } catch (IOException e) {
-            throw new TollMeshException(ErrorCode.fromCode(statusCode), "HTTP " + statusCode);
+            throw new TollMeshException(ErrorCode.fromCode(statusCode), "HTTP " + statusCode, e);
         }
     }
 

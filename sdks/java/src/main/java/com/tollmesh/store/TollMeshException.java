@@ -1,34 +1,34 @@
 package com.tollmesh.store;
 
 public class TollMeshException extends Exception {
-    private final String errorCode;
+    private final ErrorCode errorCode;
     private final int statusCode;
 
     public TollMeshException(String message) {
         super(message);
-        this.errorCode = null;
+        this.errorCode = ErrorCode.INTERNAL;
         this.statusCode = 0;
     }
 
     public TollMeshException(String message, Throwable cause) {
         super(message, cause);
-        this.errorCode = null;
+        this.errorCode = ErrorCode.INTERNAL;
         this.statusCode = 0;
     }
 
-    public TollMeshException(String message, String errorCode, int statusCode) {
+    public TollMeshException(ErrorCode errorCode, String message) {
         super(message);
         this.errorCode = errorCode;
-        this.statusCode = statusCode;
+        this.statusCode = errorCode.getCode();
     }
 
-    public TollMeshException(String message, String errorCode, int statusCode, Throwable cause) {
+    public TollMeshException(ErrorCode errorCode, String message, Throwable cause) {
         super(message, cause);
         this.errorCode = errorCode;
-        this.statusCode = statusCode;
+        this.statusCode = errorCode.getCode();
     }
 
-    public String getErrorCode() {
+    public ErrorCode getErrorCode() {
         return errorCode;
     }
 

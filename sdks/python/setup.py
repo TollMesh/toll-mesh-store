@@ -1,6 +1,6 @@
 from setuptools import setup, find_packages
 
-with open("README.md", "r", encoding="utf-8") as fh:
+with open("../../../sdks/python/README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
 setup(
@@ -11,7 +11,7 @@ setup(
     description="Python SDK for TollMeshCache - Distributed CRDT-based caching",
     long_description=long_description,
     long_description_content_type="text/markdown",
-    url="https://github.com/toll-mesh/store",
+    url="https://github.com/TollMesh/toll-mesh-store",
     packages=find_packages(),
     classifiers=[
         "Programming Language :: Python :: 3",

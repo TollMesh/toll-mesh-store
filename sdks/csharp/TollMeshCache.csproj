@@ -12,9 +12,9 @@
     <Version>1.0.0</Version>
     <Authors>TollMesh Team</Authors>
     <Description>C# SDK for TollMeshCache - Distributed CRDT-based caching and coordination</Description>
-    <PackageProjectUrl>https://github.com/toll-mesh/store</PackageProjectUrl>
+    <PackageProjectUrl>https://github.com/TollMesh/toll-mesh-store</PackageProjectUrl>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <RepositoryUrl>https://github.com/toll-mesh/store</RepositoryUrl>
+    <RepositoryUrl>https://github.com/TollMesh/toll-mesh-store</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageTags>cache;crdt;distributed;rate-limiting;coordination</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -12,7 +12,7 @@
 
     <name>TollMeshCache</name>
     <description>Java SDK for TollMeshCache - Distributed CRDT-based caching</description>
-    <url>https://github.com/toll-mesh/store</url>
+    <url>https://github.com/TollMesh/toll-mesh-store</url>
 
 
     <licenses>
@@ -31,9 +31,9 @@
     </developers>
 
     <scm>
-        <connection>scm:git:https://github.com/toll-mesh/store.git</connection>
-        <developerConnection>scm:git:https://github.com/toll-mesh/store.git</developerConnection>
-        <url>https://github.com/toll-mesh/store</url>
+        <connection>scm:git:https://github.com/TollMesh/toll-mesh-store.git</connection>
+        <developerConnection>scm:git:https://github.com/TollMesh/toll-mesh-store.git</developerConnection>
+        <url>https://github.com/TollMesh/toll-mesh-store</url>
     </scm>
 
     <properties>

@@ -1,8 +1,8 @@
 # Site Configuration
 title: TollMeshCache
 description: Production-ready distributed coordination and caching
-url: https://toll-mesh.github.io
-baseurl: /store
+url: https://tollmesh.github.io
+baseurl: /toll-mesh-store
 
 # Theme
 theme: just-the-docs

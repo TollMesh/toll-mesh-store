@@ -7,7 +7,6 @@ repository: TollMesh/toll-mesh-store
 remote_theme: just-the-docs/just-the-docs
 
 color_scheme: dark
-logo: "/assets/logo.png"
 
 # Search configuration
 search_enabled: true
@@ -17,7 +16,7 @@ search.preview_words_before: 5
 search.preview_words_after: 10
 
 # Footer
-footer_content: "Copyright &copy; 2024 TollMesh. <a href=\"https://github.com/TollMesh/toll-mesh-store/blob/main/LICENSE\">Licensed under Apache 2.0</a> | <a href=\"https://github.com/TollMesh/toll-mesh-store\">GitHub</a>"
+footer_content: "Copyright &copy; 2026 TollMesh. <a href=\"https://github.com/TollMesh/toll-mesh-store/blob/master/LICENSE\">Licensed under Apache 2.0</a> | <a href=\"https://github.com/TollMesh/toll-mesh-store\">GitHub</a>"
 
 # Analytics (optional)
 ga_measurement_id: ""

@@ -1,7 +1,7 @@
 ---
 layout: default
 title: vs Redis
-nav_order: 9
+nav_order: 11
 ---
 
 # TollMeshCache vs Redis

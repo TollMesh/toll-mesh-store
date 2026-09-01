@@ -10,7 +10,11 @@ pub mod retry;
 pub use client::Client;
 pub use config::ClientConfig;
 pub use errors::{TollMeshError, ErrorCode};
-pub use types::{ConsumeResult, SeenResult, CacheValue, HealthResponse, Peer};
+pub use types::{
+    ConsumeResult, SeenResult, CacheValue, HealthResponse, Peer,
+    Job, SortedSetMember, StreamEntry,
+    ZScoreResponse, ZRankResponse,
+};
 
 #[cfg(test)]
 mod tests {

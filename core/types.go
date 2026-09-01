@@ -3,6 +3,10 @@ package core
 import (
 	"context"
 	"time"
+
+	"github.com/toll-mesh/store/queue"
+	"github.com/toll-mesh/store/sortedset"
+	"github.com/toll-mesh/store/stream"
 )
 
 // Store is the distributed store interface for Toll Mesh coordination.
@@ -12,6 +16,33 @@ type Store interface {
 	Get(ctx context.Context, ns, key string) ([]byte, bool, error)
 	Set(ctx context.Context, ns, key string, value []byte, ttl time.Duration) error
 	Close() error
+
+	// Job Queues
+	Enqueue(ctx context.Context, queueName string, payload []byte, priority, maxRetries int, deadline time.Duration) (*queue.Job, error)
+	ClaimJob(ctx context.Context, queueName, workerID string) (*queue.Job, error)
+	CompleteJob(ctx context.Context, queueName, jobID string, result []byte) error
+	FailJob(ctx context.Context, queueName, jobID, errMsg string) error
+	GetJobStatus(ctx context.Context, queueName, jobID string) (*queue.Job, error)
+	GetQueueStats(ctx context.Context, queueName string) (map[string]interface{}, error)
+
+	// Sorted Sets
+	ZAdd(ctx context.Context, key, member string, score float64) error
+	ZRem(ctx context.Context, key, member string) error
+	ZScore(ctx context.Context, key, member string) (float64, bool)
+	ZRank(ctx context.Context, key, member string) (int64, bool)
+	ZRevRank(ctx context.Context, key, member string) (int64, bool)
+	ZRange(ctx context.Context, key string, min, max float64, limit int64) []*sortedset.SortedSetMember
+	ZRevRange(ctx context.Context, key string, max, min float64, limit int64) []*sortedset.SortedSetMember
+	ZRangeByRank(ctx context.Context, key string, start, stop int64) []*sortedset.SortedSetMember
+	ZCard(ctx context.Context, key string) int64
+
+	// Streams
+	XAdd(ctx context.Context, streamName string, fields map[string]string) (*stream.StreamEntry, error)
+	XRange(ctx context.Context, streamName, startID, endID string, limit int64) []*stream.StreamEntry
+	XLen(ctx context.Context, streamName string) int64
+	XGroupCreate(ctx context.Context, streamName, groupName string) error
+	XReadGroup(ctx context.Context, streamName, groupName, consumerID string, limit int64) ([]*stream.StreamEntry, error)
+	XAck(ctx context.Context, streamName, groupName, consumerID, entryID string) error
 }
 
 // ConsumeResult represents the outcome of a rate limit check.

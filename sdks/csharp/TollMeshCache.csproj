@@ -20,6 +20,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="System.Text.Json" Version="8.0.0" />
     <PackageReference Include="Newtonsoft.Json" Version="13.0.3" />
     <PackageReference Include="Grpc.Net.Client" Version="2.56.0" Optional="true" />
     <PackageReference Include="Google.Protobuf" Version="3.22.0" Optional="true" />

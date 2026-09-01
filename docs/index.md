@@ -8,9 +8,6 @@ nav_order: 1
 
 Production-ready distributed coordination and caching system with 7-language SDK support. No central coordinator required.
 
-{% include theme-toggle.html %}
-{% include language-switcher.html %}
-
 ---
 
 ## Production Status

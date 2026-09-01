@@ -52,4 +52,4 @@ jobs:
       - name: Publish to Maven Central
         run: |
           cd sdks/java/
-          mvn deploy -DskipTests
+          mvn central:publish -DskipTests

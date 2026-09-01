@@ -28,9 +28,12 @@ jobs:
           mvn clean package -DskipTests
 
       - name: Create Maven Settings
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
         run: |
           mkdir -p ~/.m2
-          cat > ~/.m2/settings.xml << 'MVNSETTINGS'
+          cat > ~/.m2/settings.xml << MVNSETTINGS
           <?xml version="1.0" encoding="UTF-8"?>
           <settings xmlns="http://maven.apache.org/SETTINGS/1.0.0"
                     xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
@@ -39,8 +42,8 @@ jobs:
             <servers>
               <server>
                 <id>central</id>
-                <username>${{ secrets.SONATYPE_USERNAME }}</username>
-                <password>${{ secrets.SONATYPE_PASSWORD }}</password>
+                <username>$SONATYPE_USERNAME</username>
+                <password>$SONATYPE_PASSWORD</password>
               </server>
             </servers>
           </settings>
@@ -50,6 +53,3 @@ jobs:
         run: |
           cd sdks/java/
           mvn deploy -DskipTests
-        env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}

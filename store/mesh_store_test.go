@@ -119,6 +119,23 @@ func TestMeshStore_GetSet_CacheOperations(t *testing.T) {
 		t.Errorf("Expected %s, got %s", string(testValue), string(retrieved))
 	}
 
+	// Zero TTL must mean "no expiration" (the documented contract every SDK
+	// exposes, e.g. Python's cache_set(..., ttl=None)), not "expires now".
+	err = store.Set(context.Background(), "test-ns", "no-ttl-key", testValue, 0)
+	if err != nil {
+		t.Fatalf("Set with zero TTL failed: %v", err)
+	}
+	retrieved, exists, err = store.Get(context.Background(), "test-ns", "no-ttl-key")
+	if err != nil {
+		t.Fatalf("Get after zero-TTL set failed: %v", err)
+	}
+	if !exists {
+		t.Error("Value set with zero TTL should exist immediately (zero TTL means no expiration, not immediate expiration)")
+	}
+	if string(retrieved) != string(testValue) {
+		t.Errorf("Expected %s, got %s", string(testValue), string(retrieved))
+	}
+
 	_, exists, err = store.Get(context.Background(), "test-ns", "non-existent")
 	if err != nil {
 		t.Fatalf("Get for non-existent key failed: %v", err)

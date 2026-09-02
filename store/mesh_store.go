@@ -378,7 +378,18 @@ func (ms *MeshStore) Set(ctx context.Context, ns, key string, value []byte, ttl 
 	}
 
 	ms.cache[ns][key] = value
-	ms.cacheTTL[ns][key] = time.Now().Add(ttl)
+
+	// ttl <= 0 means "no expiration" (this is the documented contract every
+	// SDK exposes, e.g. Python's cache_set(..., ttl=None)). Get() treats a
+	// key absent from cacheTTL as never expiring, so simply don't record an
+	// expiry for it -- previously this always wrote time.Now().Add(ttl),
+	// which for ttl=0 set the expiry to right now, making every "no TTL"
+	// cache_set dead on arrival.
+	if ttl > 0 {
+		ms.cacheTTL[ns][key] = time.Now().Add(ttl)
+	} else {
+		delete(ms.cacheTTL[ns], key)
+	}
 	return nil
 }
 

@@ -215,6 +215,224 @@ class Client
         $this->post('/stream/group/ack', ['stream' => $stream, 'group' => $group, 'consumer' => $consumer, 'id' => $entryId]);
     }
 
+    // ===== Pub/Sub =====
+
+    public function subscribe(string $subscriberId, string $topic, string $pattern = ''): void
+    {
+        $this->post('/pubsub/subscribe', ['subscriber_id' => $subscriberId, 'topic' => $topic, 'pattern' => $pattern]);
+    }
+
+    public function unsubscribe(string $subscriberId, string $topic): void
+    {
+        $this->post('/pubsub/unsubscribe', ['subscriber_id' => $subscriberId, 'topic' => $topic]);
+    }
+
+    public function publish(string $topic, string $publisher, string $payload): int
+    {
+        $response = $this->post('/pubsub/publish', ['topic' => $topic, 'publisher' => $publisher, 'payload' => $payload]);
+        return $response['delivered_count'] ?? 0;
+    }
+
+    public function poll(string $subscriberId, int $limit = 10, int $timeoutMs = 5000): array
+    {
+        $response = $this->post('/pubsub/poll', ['subscriber_id' => $subscriberId, 'limit' => $limit, 'timeout_ms' => $timeoutMs]);
+        return $response['messages'] ?? [];
+    }
+
+    public function getTopics(): array
+    {
+        return $this->get('/pubsub/topics')['topics'] ?? [];
+    }
+
+    public function getTopicSubscribers(string $topic): array
+    {
+        return $this->get('/pubsub/subscribers', ['topic' => $topic])['subscribers'] ?? [];
+    }
+
+    public function pubsubStats(): array
+    {
+        return $this->get('/pubsub/stats');
+    }
+
+    // ===== Transactions =====
+
+    public function beginTransaction(string $txnId): array
+    {
+        return $this->post('/txn/begin', ['txn_id' => $txnId]);
+    }
+
+    public function addTransactionOperation(string $txnId, string $type, string $namespace, string $key, string $value = ''): void
+    {
+        $this->post('/txn/operation', ['txn_id' => $txnId, 'type' => $type, 'namespace' => $namespace, 'key' => $key, 'value' => $value]);
+    }
+
+    public function commitTransaction(string $txnId): void
+    {
+        $this->post('/txn/commit', ['txn_id' => $txnId]);
+    }
+
+    public function rollbackTransaction(string $txnId): void
+    {
+        $this->post('/txn/rollback', ['txn_id' => $txnId]);
+    }
+
+    public function transactionStatus(string $txnId): string
+    {
+        return $this->get('/txn/status', ['txn_id' => $txnId])['status'] ?? '';
+    }
+
+    // ===== Persistence =====
+
+    public function createSnapshot(): void
+    {
+        $this->post('/persistence/snapshot', []);
+    }
+
+    public function getLatestSnapshot(): ?array
+    {
+        try {
+            return $this->get('/persistence/snapshot/latest');
+        } catch (\Exception $e) {
+            return null;
+        }
+    }
+
+    public function restoreFromLatestSnapshot(): void
+    {
+        $this->post('/persistence/restore', []);
+    }
+
+    public function persistenceStats(): array
+    {
+        return $this->get('/persistence/stats');
+    }
+
+    // ===== Scripting: Pipelines (safe operation composition) =====
+
+    public function registerPipeline(string $name, array $steps): void
+    {
+        $this->post('/pipeline/register', ['name' => $name, 'steps' => $steps]);
+    }
+
+    public function executePipeline(string $name): array
+    {
+        return $this->post('/pipeline/execute', ['name' => $name]);
+    }
+
+    public function executeInlinePipeline(array $steps): array
+    {
+        return $this->post('/pipeline/execute-inline', ['steps' => $steps]);
+    }
+
+    public function getPipeline(string $name): array
+    {
+        return $this->get('/pipeline/get', ['name' => $name]);
+    }
+
+    public function listPipelines(): array
+    {
+        return $this->get('/pipeline/list')['pipelines'] ?? [];
+    }
+
+    public function deletePipeline(string $name): void
+    {
+        $this->post('/pipeline/delete', ['name' => $name]);
+    }
+
+    // ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+    public function compileScript(string $name, string $source): array
+    {
+        return $this->post('/script/compile', ['name' => $name, 'source' => $source]);
+    }
+
+    public function executeScript(string $name, string $input = ''): string
+    {
+        $response = $this->post('/script/execute', ['name' => $name, 'input' => $input]);
+        return $response['output'] ?? '';
+    }
+
+    public function executeInlineScript(string $source, string $input = ''): string
+    {
+        $response = $this->post('/script/execute-inline', ['source' => $source, 'input' => $input]);
+        return $response['output'] ?? '';
+    }
+
+    public function getScript(string $name): array
+    {
+        return $this->get('/script/get', ['name' => $name]);
+    }
+
+    public function listScripts(): array
+    {
+        return $this->get('/script/list')['scripts'] ?? [];
+    }
+
+    public function deleteScript(string $name): void
+    {
+        $this->post('/script/delete', ['name' => $name]);
+    }
+
+    // ===== Search =====
+
+    public function indexDocument(string $id, string $content, ?array $metadata = null, ?array $vector = null): void
+    {
+        $body = ['id' => $id, 'content' => $content];
+        if ($metadata !== null) {
+            $body['metadata'] = $metadata;
+        }
+        if ($vector !== null) {
+            $body['vector'] = $vector;
+        }
+        $this->post('/search/index', $body);
+    }
+
+    public function searchBM25(string $query, int $topK = 10): array
+    {
+        return $this->get('/search/bm25', ['query' => $query, 'topk' => $topK])['results'] ?? [];
+    }
+
+    public function searchVector(array $vector, int $topK = 10): array
+    {
+        return $this->post('/search/vector', ['vector' => $vector, 'topk' => $topK])['results'] ?? [];
+    }
+
+    public function searchHybrid(string $query, array $vector, int $topK = 10): array
+    {
+        return $this->post('/search/hybrid', ['query' => $query, 'vector' => $vector, 'topk' => $topK])['results'] ?? [];
+    }
+
+    public function deleteSearchDocument(string $id): void
+    {
+        $this->post('/search/delete', ['id' => $id]);
+    }
+
+    // ===== Ranking =====
+
+    public function rank(array $items, string $strategy = 'bm25', ?array $boosts = null): array
+    {
+        $body = ['items' => $items, 'strategy' => $strategy];
+        if ($boosts !== null) {
+            $body['boosts'] = $boosts;
+        }
+        return $this->post('/rank', $body)['items'] ?? [];
+    }
+
+    // ===== Metrics =====
+
+    public function getMetrics(): array
+    {
+        return $this->get('/metrics');
+    }
+
+    public function getPrometheusMetrics(): string
+    {
+        $response = $this->http->get('/metrics/prometheus', [
+            'headers' => ['User-Agent' => 'tollmeshcache-php/1.0.0'],
+        ]);
+        return (string) $response->getBody();
+    }
+
     private function post(string $endpoint, array $body): array
     {
         try {

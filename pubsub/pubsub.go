@@ -118,15 +118,23 @@ func (pb *PubSubBroker) Unsubscribe(subscriberID, topic string) error {
 	return nil
 }
 
-// Publish publishes a message to a topic
+// Publish publishes a message to a topic. Matching Redis's PUBLISH
+// semantics, publishing to a topic with no subscribers (or one that has
+// never been subscribed to) is not an error -- it simply delivers to zero
+// receivers.
 func (pb *PubSubBroker) Publish(topic, publisher string, payload []byte) (int, error) {
-	pb.mu.RLock()
+	pb.mu.Lock()
 	t, exists := pb.topics[topic]
-	pb.mu.RUnlock()
-
 	if !exists {
-		return 0, fmt.Errorf("topic not found: %s", topic)
+		t = &Topic{
+			name:        topic,
+			subscribers: make(map[string]*Subscriber),
+			messages:    make([]Message, 0, 100),
+			maxHistory:  100,
+		}
+		pb.topics[topic] = t
 	}
+	pb.mu.Unlock()
 
 	msg := Message{
 		Topic:     topic,
@@ -163,6 +171,57 @@ func (pb *PubSubBroker) Publish(topic, publisher string, payload []byte) (int, e
 	}
 
 	return count, nil
+}
+
+// Poll retrieves up to limit currently-available messages for a subscriber,
+// waiting up to timeout if none are immediately available. This exists
+// because a Go channel cannot cross an HTTP request/response boundary --
+// callers over HTTP poll for delivery instead of receiving a push.
+func (pb *PubSubBroker) Poll(subscriberID string, limit int, timeout time.Duration) ([]Message, error) {
+	pb.mu.RLock()
+	sub, exists := pb.subscribers[subscriberID]
+	pb.mu.RUnlock()
+
+	if !exists {
+		return nil, fmt.Errorf("subscriber not found: %s", subscriberID)
+	}
+
+	if limit <= 0 {
+		limit = 1
+	}
+
+	messages := make([]Message, 0, limit)
+	deadline := time.NewTimer(timeout)
+	defer deadline.Stop()
+
+	// Block until the first message (or timeout with none available).
+	select {
+	case msg, ok := <-sub.Channel:
+		if !ok {
+			return messages, nil // channel closed (unsubscribed)
+		}
+		messages = append(messages, msg)
+	case <-deadline.C:
+		return messages, nil
+	}
+
+	// Then drain any additional already-buffered messages without waiting
+	// for more to arrive -- a caller asking for up to `limit` shouldn't
+	// block for the full timeout just because fewer than `limit` messages
+	// happened to be available right now.
+	for len(messages) < limit {
+		select {
+		case msg, ok := <-sub.Channel:
+			if !ok {
+				return messages, nil
+			}
+			messages = append(messages, msg)
+		default:
+			return messages, nil
+		}
+	}
+
+	return messages, nil
 }
 
 // GetTopics returns list of all topics

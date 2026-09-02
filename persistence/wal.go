@@ -5,6 +5,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"hash/crc32"
+	"io"
 	"os"
 	"path/filepath"
 	"sync"
@@ -292,6 +293,14 @@ func (wal *WriteAheadLog) writeEntry(entry *WALEntry) error {
 		return err
 	}
 
+	// Write a checksum so readers can detect corruption; skipEntry (used
+	// when skipping entries older than a requested timestamp) also reads
+	// this field, so it must always be written to keep the two paths
+	// aligned on the same on-disk format.
+	if err := binary.Write(wal.currentSegment.Writer, binary.BigEndian, wal.calculateChecksum(entry)); err != nil {
+		return err
+	}
+
 	return wal.currentSegment.Writer.Flush()
 }
 
@@ -341,7 +350,7 @@ func (wal *WriteAheadLog) readSegment(segment *WALSegment, fromTimestamp int64) 
 		}
 
 		value := make([]byte, valueLen)
-		if _, err := reader.Read(value); err != nil {
+		if _, err := io.ReadFull(reader, value); err != nil {
 			return nil, err
 		}
 
@@ -351,6 +360,14 @@ func (wal *WriteAheadLog) readSegment(segment *WALSegment, fromTimestamp int64) 
 			Key:       key,
 			Namespace: namespace,
 			Value:     value,
+		}
+
+		var storedChecksum uint32
+		if err := binary.Read(reader, binary.BigEndian, &storedChecksum); err != nil {
+			return nil, err
+		}
+		if storedChecksum != wal.calculateChecksum(entry) {
+			return nil, fmt.Errorf("WAL entry checksum mismatch at timestamp %d: corrupted segment", timestamp)
 		}
 
 		entries = append(entries, entry)
@@ -374,7 +391,7 @@ func (wal *WriteAheadLog) readString(reader *bufio.Reader) (string, error) {
 	}
 
 	buf := make([]byte, length)
-	if _, err := reader.Read(buf); err != nil {
+	if _, err := io.ReadFull(reader, buf); err != nil {
 		return "", err
 	}
 
@@ -404,7 +421,7 @@ func (wal *WriteAheadLog) skipEntry(reader *bufio.Reader) error {
 	}
 
 	buf := make([]byte, valueLen)
-	if _, err := reader.Read(buf); err != nil {
+	if _, err := io.ReadFull(reader, buf); err != nil {
 		return err
 	}
 

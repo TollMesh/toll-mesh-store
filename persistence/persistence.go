@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -164,14 +165,13 @@ func (pe *PersistenceEngine) ReplayWAL(afterTimestamp int64) ([]WALEntry, error)
 	}
 
 	var entries []WALEntry
-	lines := string(data)
-	for _, line := range lines {
-		if line == '\n' {
+	for _, line := range strings.Split(string(data), "\n") {
+		if line == "" {
 			continue
 		}
 
 		var entry WALEntry
-		if err := json.Unmarshal([]byte(string(line)), &entry); err != nil {
+		if err := json.Unmarshal([]byte(line), &entry); err != nil {
 			continue // Skip malformed entries
 		}
 

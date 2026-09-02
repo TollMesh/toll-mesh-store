@@ -381,6 +381,217 @@ namespace TollMesh.Cache
             await PostAsync<object>("/stream/group/ack", body);
         }
 
+        // ===== Pub/Sub =====
+
+        public async Task SubscribeAsync(string subscriberId, string topic, string pattern = "")
+        {
+            await PostAsync<object>("/pubsub/subscribe", new { subscriber_id = subscriberId, topic, pattern });
+        }
+
+        public async Task UnsubscribeAsync(string subscriberId, string topic)
+        {
+            await PostAsync<object>("/pubsub/unsubscribe", new { subscriber_id = subscriberId, topic });
+        }
+
+        public async Task<int> PublishAsync(string topic, string publisher, string payload)
+        {
+            var response = await PostAsync<JsonElement>("/pubsub/publish", new { topic, publisher, payload });
+            return response.GetProperty("delivered_count").GetInt32();
+        }
+
+        public async Task<List<JsonElement>> PollAsync(string subscriberId, int limit = 10, int timeoutMs = 5000)
+        {
+            var response = await PostAsync<JsonElement>("/pubsub/poll", new { subscriber_id = subscriberId, limit, timeout_ms = timeoutMs });
+            return response.TryGetProperty("messages", out var m) ? JsonSerializer.Deserialize<List<JsonElement>>(m.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task<List<string>> GetTopicsAsync()
+        {
+            var response = await GetAsync<JsonElement>("/pubsub/topics");
+            return response.TryGetProperty("topics", out var t) ? JsonSerializer.Deserialize<List<string>>(t.GetRawText())! : new List<string>();
+        }
+
+        public async Task<List<string>> GetTopicSubscribersAsync(string topic)
+        {
+            var response = await GetAsync<JsonElement>("/pubsub/subscribers", new() { ["topic"] = topic });
+            return response.TryGetProperty("subscribers", out var s) ? JsonSerializer.Deserialize<List<string>>(s.GetRawText())! : new List<string>();
+        }
+
+        public async Task<Dictionary<string, JsonElement>> PubSubStatsAsync()
+        {
+            return await GetAsync<Dictionary<string, JsonElement>>("/pubsub/stats");
+        }
+
+        // ===== Transactions =====
+
+        public async Task<JsonElement> BeginTransactionAsync(string txnId)
+        {
+            return await PostAsync<JsonElement>("/txn/begin", new { txn_id = txnId });
+        }
+
+        public async Task AddTransactionOperationAsync(string txnId, string type, string ns, string key, string value = "")
+        {
+            await PostAsync<object>("/txn/operation", new { txn_id = txnId, type, @namespace = ns, key, value });
+        }
+
+        public async Task CommitTransactionAsync(string txnId)
+        {
+            await PostAsync<object>("/txn/commit", new { txn_id = txnId });
+        }
+
+        public async Task RollbackTransactionAsync(string txnId)
+        {
+            await PostAsync<object>("/txn/rollback", new { txn_id = txnId });
+        }
+
+        public async Task<string> TransactionStatusAsync(string txnId)
+        {
+            var response = await GetAsync<JsonElement>("/txn/status", new() { ["txn_id"] = txnId });
+            return response.GetProperty("status").GetString() ?? "";
+        }
+
+        // ===== Persistence =====
+
+        public async Task CreateSnapshotAsync()
+        {
+            await PostAsync<object>("/persistence/snapshot", new { });
+        }
+
+        public async Task<JsonElement> GetLatestSnapshotAsync()
+        {
+            return await GetAsync<JsonElement>("/persistence/snapshot/latest");
+        }
+
+        public async Task RestoreFromLatestSnapshotAsync()
+        {
+            await PostAsync<object>("/persistence/restore", new { });
+        }
+
+        public async Task<Dictionary<string, JsonElement>> PersistenceStatsAsync()
+        {
+            return await GetAsync<Dictionary<string, JsonElement>>("/persistence/stats");
+        }
+
+        // ===== Scripting: Pipelines (safe operation composition) =====
+
+        public async Task RegisterPipelineAsync(string name, List<object> steps)
+        {
+            await PostAsync<object>("/pipeline/register", new { name, steps });
+        }
+
+        public async Task<JsonElement> ExecutePipelineAsync(string name)
+        {
+            return await PostAsync<JsonElement>("/pipeline/execute", new { name });
+        }
+
+        public async Task<JsonElement> ExecuteInlinePipelineAsync(List<object> steps)
+        {
+            return await PostAsync<JsonElement>("/pipeline/execute-inline", new { steps });
+        }
+
+        public async Task<JsonElement> GetPipelineAsync(string name)
+        {
+            return await GetAsync<JsonElement>("/pipeline/get", new() { ["name"] = name });
+        }
+
+        public async Task<List<JsonElement>> ListPipelinesAsync()
+        {
+            var response = await GetAsync<JsonElement>("/pipeline/list");
+            return response.TryGetProperty("pipelines", out var p) ? JsonSerializer.Deserialize<List<JsonElement>>(p.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task DeletePipelineAsync(string name)
+        {
+            await PostAsync<object>("/pipeline/delete", new { name });
+        }
+
+        // ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+        public async Task<JsonElement> CompileScriptAsync(string name, string source)
+        {
+            return await PostAsync<JsonElement>("/script/compile", new { name, source });
+        }
+
+        public async Task<string> ExecuteScriptAsync(string name, string input = "")
+        {
+            var response = await PostAsync<JsonElement>("/script/execute", new { name, input });
+            return response.GetProperty("output").GetString() ?? "";
+        }
+
+        public async Task<string> ExecuteInlineScriptAsync(string source, string input = "")
+        {
+            var response = await PostAsync<JsonElement>("/script/execute-inline", new { source, input });
+            return response.GetProperty("output").GetString() ?? "";
+        }
+
+        public async Task<JsonElement> GetScriptAsync(string name)
+        {
+            return await GetAsync<JsonElement>("/script/get", new() { ["name"] = name });
+        }
+
+        public async Task<List<JsonElement>> ListScriptsAsync()
+        {
+            var response = await GetAsync<JsonElement>("/script/list");
+            return response.TryGetProperty("scripts", out var s) ? JsonSerializer.Deserialize<List<JsonElement>>(s.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task DeleteScriptAsync(string name)
+        {
+            await PostAsync<object>("/script/delete", new { name });
+        }
+
+        // ===== Search =====
+
+        public async Task IndexDocumentAsync(string id, string content, Dictionary<string, object>? metadata = null, List<float>? vector = null)
+        {
+            await PostAsync<object>("/search/index", new { id, content, metadata, vector });
+        }
+
+        public async Task<List<JsonElement>> SearchBM25Async(string query, int topK = 10)
+        {
+            var response = await GetAsync<JsonElement>("/search/bm25", new() { ["query"] = query, ["topk"] = topK.ToString() });
+            return response.TryGetProperty("results", out var r) ? JsonSerializer.Deserialize<List<JsonElement>>(r.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task<List<JsonElement>> SearchVectorAsync(List<float> vector, int topK = 10)
+        {
+            var response = await PostAsync<JsonElement>("/search/vector", new { vector, topk = topK });
+            return response.TryGetProperty("results", out var r) ? JsonSerializer.Deserialize<List<JsonElement>>(r.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task<List<JsonElement>> SearchHybridAsync(string query, List<float> vector, int topK = 10)
+        {
+            var response = await PostAsync<JsonElement>("/search/hybrid", new { query, vector, topk = topK });
+            return response.TryGetProperty("results", out var r) ? JsonSerializer.Deserialize<List<JsonElement>>(r.GetRawText())! : new List<JsonElement>();
+        }
+
+        public async Task DeleteSearchDocumentAsync(string id)
+        {
+            await PostAsync<object>("/search/delete", new { id });
+        }
+
+        // ===== Ranking =====
+
+        public async Task<List<JsonElement>> RankAsync(List<object> items, string strategy = "bm25", Dictionary<string, float>? boosts = null)
+        {
+            var response = await PostAsync<JsonElement>("/rank", new { items, strategy, boosts });
+            return response.TryGetProperty("items", out var i) ? JsonSerializer.Deserialize<List<JsonElement>>(i.GetRawText())! : new List<JsonElement>();
+        }
+
+        // ===== Metrics =====
+
+        public async Task<Dictionary<string, JsonElement>> GetMetricsAsync()
+        {
+            return await GetAsync<Dictionary<string, JsonElement>>("/metrics");
+        }
+
+        public async Task<string> GetPrometheusMetricsAsync()
+        {
+            var url = _config.GetBaseUrl() + "/metrics/prometheus";
+            var response = await _httpClient.GetAsync(url);
+            return await response.Content.ReadAsStringAsync();
+        }
+
         private async Task<T> PostAsync<T>(string endpoint, object body)
         {
             var url = _config.GetBaseUrl() + endpoint;

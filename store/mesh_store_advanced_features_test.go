@@ -217,3 +217,62 @@ func TestMeshStore_Metrics_RecordsRealOperations(t *testing.T) {
 		t.Error("expected non-empty Prometheus output")
 	}
 }
+
+const echoWasmScript = `
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+)
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	fmt.Printf("echo: %s\n", scanner.Text())
+}
+`
+
+func TestMeshStore_WasmScript_EndToEnd(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	script, err := s.CompileScript(ctx, "echo", echoWasmScript)
+	if err != nil {
+		t.Skipf("WASM scripting unavailable (tinygo not installed?): %v", err)
+	}
+	if script.WasmSize == 0 {
+		t.Fatal("expected non-empty compiled WASM module")
+	}
+
+	output, err := s.ExecuteScript(ctx, "echo", "hello from meshstore")
+	if err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	if output != "echo: hello from meshstore\n" {
+		t.Errorf("unexpected output: %q", output)
+	}
+
+	scripts := s.ListScripts(ctx)
+	if len(scripts) != 1 {
+		t.Errorf("expected 1 registered script, got %d", len(scripts))
+	}
+
+	if err := s.DeleteScript(ctx, "echo"); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+}
+
+func TestMeshStore_WasmScript_ExecuteInline(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	output, err := s.ExecuteInlineScript(ctx, echoWasmScript, "inline")
+	if err != nil {
+		t.Skipf("WASM scripting unavailable (tinygo not installed?): %v", err)
+	}
+	if output != "echo: inline\n" {
+		t.Errorf("unexpected output: %q", output)
+	}
+}

@@ -72,13 +72,24 @@ type Store interface {
 	RestoreFromLatestSnapshot(ctx context.Context) error
 	GetPersistenceStats(ctx context.Context) map[string]interface{}
 
-	// Scripting (Pipelines)
+	// Scripting (Pipelines) -- safe, no-code-execution operation composition
 	RegisterPipeline(ctx context.Context, p *scripting.Pipeline) error
 	ExecutePipeline(ctx context.Context, name string) (*scripting.ExecutionResult, error)
 	ExecuteInlinePipeline(ctx context.Context, steps []scripting.Step) (*scripting.ExecutionResult, error)
 	GetPipeline(ctx context.Context, name string) (*scripting.Pipeline, error)
 	ListPipelines(ctx context.Context) []*scripting.Pipeline
 	DeletePipeline(ctx context.Context, name string) error
+
+	// Scripting (WASM) -- real arbitrary Go code, compiled via TinyGo and
+	// run sandboxed via wazero. Returns an error naming the reason (e.g.
+	// "tinygo not found") if the TinyGo toolchain wasn't available at
+	// startup; every other feature keeps working regardless.
+	CompileScript(ctx context.Context, name, source string) (*scripting.CompiledScript, error)
+	ExecuteScript(ctx context.Context, name, input string) (string, error)
+	ExecuteInlineScript(ctx context.Context, source, input string) (string, error)
+	GetScript(ctx context.Context, name string) (*scripting.CompiledScript, error)
+	ListScripts(ctx context.Context) []*scripting.CompiledScript
+	DeleteScript(ctx context.Context, name string) error
 
 	// Search
 	IndexDocument(ctx context.Context, doc *search.Document) error

@@ -42,12 +42,14 @@ type MeshStore struct {
 	// keyed by "streamName:groupName"
 	groups map[string]*stream.ConsumerGroup
 
-	pubsubBroker *pubsub.PubSubBroker
-	txnManager   *transactions.TransactionManager
-	persistence  *persistence.PersistenceEngine
-	pipelines    *scripting.Engine
-	searchEngine *search.HybridSearchEngine
-	metricsColl  *metrics.Metrics
+	pubsubBroker    *pubsub.PubSubBroker
+	txnManager      *transactions.TransactionManager
+	persistence     *persistence.PersistenceEngine
+	pipelines       *scripting.Engine
+	wasmEngine      *scripting.WasmEngine // nil if TinyGo wasn't found at startup
+	wasmUnavailable error                 // reason wasmEngine is nil, if it is
+	searchEngine    *search.HybridSearchEngine
+	metricsColl     *metrics.Metrics
 }
 
 // NewMeshStore creates a new MeshStore instance.
@@ -83,6 +85,18 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		pipelines:        scripting.NewEngine(50, 30*time.Second),
 		searchEngine:     search.NewHybridSearchEngine(),
 		metricsColl:      metrics.NewMetrics(),
+	}
+
+	// WASM scripting requires the external TinyGo toolchain, which is a
+	// much heavier dependency than anything else this server needs (a
+	// separate compiler installation, not a Go module). A machine without
+	// it should still be able to run every other feature, so this degrades
+	// to "unavailable" (wasmEngine stays nil, handled explicitly by every
+	// WASM method below) rather than failing the whole server's startup.
+	if wasmEngine, err := scripting.NewWasmEngine("", 10*time.Second); err == nil {
+		ms.wasmEngine = wasmEngine
+	} else {
+		ms.wasmUnavailable = err
 	}
 
 	ms.registerPipelineHandlers()
@@ -745,6 +759,60 @@ func (ms *MeshStore) ListPipelines(ctx context.Context) []*scripting.Pipeline {
 // DeletePipeline removes a registered pipeline.
 func (ms *MeshStore) DeletePipeline(ctx context.Context, name string) error {
 	return ms.pipelines.DeletePipeline(name)
+}
+
+// ===== Scripting (WASM) =====
+
+var errWasmUnavailable = fmt.Errorf("WASM scripting unavailable: TinyGo toolchain not found at server startup")
+
+// CompileScript compiles Go source to a sandboxed WASM module via TinyGo
+// and registers it under name.
+func (ms *MeshStore) CompileScript(ctx context.Context, name, source string) (*scripting.CompiledScript, error) {
+	if ms.wasmEngine == nil {
+		return nil, fmt.Errorf("%w (%v)", errWasmUnavailable, ms.wasmUnavailable)
+	}
+	return ms.wasmEngine.Compile(name, source)
+}
+
+// ExecuteScript runs a previously compiled script by name.
+func (ms *MeshStore) ExecuteScript(ctx context.Context, name, input string) (string, error) {
+	if ms.wasmEngine == nil {
+		return "", fmt.Errorf("%w (%v)", errWasmUnavailable, ms.wasmUnavailable)
+	}
+	return ms.wasmEngine.Execute(name, input)
+}
+
+// ExecuteInlineScript compiles and immediately runs Go source without
+// registering it.
+func (ms *MeshStore) ExecuteInlineScript(ctx context.Context, source, input string) (string, error) {
+	if ms.wasmEngine == nil {
+		return "", fmt.Errorf("%w (%v)", errWasmUnavailable, ms.wasmUnavailable)
+	}
+	return ms.wasmEngine.ExecuteInline(source, input)
+}
+
+// GetScript retrieves a registered script by name.
+func (ms *MeshStore) GetScript(ctx context.Context, name string) (*scripting.CompiledScript, error) {
+	if ms.wasmEngine == nil {
+		return nil, fmt.Errorf("%w (%v)", errWasmUnavailable, ms.wasmUnavailable)
+	}
+	return ms.wasmEngine.GetScript(name)
+}
+
+// ListScripts returns all registered scripts.
+func (ms *MeshStore) ListScripts(ctx context.Context) []*scripting.CompiledScript {
+	if ms.wasmEngine == nil {
+		return nil
+	}
+	return ms.wasmEngine.ListScripts()
+}
+
+// DeleteScript removes a registered script.
+func (ms *MeshStore) DeleteScript(ctx context.Context, name string) error {
+	if ms.wasmEngine == nil {
+		return fmt.Errorf("%w (%v)", errWasmUnavailable, ms.wasmUnavailable)
+	}
+	return ms.wasmEngine.DeleteScript(name)
 }
 
 // ===== Search =====

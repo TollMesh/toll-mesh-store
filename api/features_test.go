@@ -342,3 +342,48 @@ func TestHTTP_Metrics(t *testing.T) {
 		t.Errorf("expected non-empty prometheus output, got status=%d len=%d", rec.Code, rec.Body.Len())
 	}
 }
+
+const httpEchoScript = `
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+)
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	fmt.Printf("echo: %s\n", scanner.Text())
+}
+`
+
+func TestHTTP_WasmScript_EndToEnd(t *testing.T) {
+	hs := newTestServer(t)
+
+	var compileResp map[string]interface{}
+	status := postJSON(t, hs, "/script/compile", CompileScriptRequest{Name: "echo", Source: httpEchoScript}, &compileResp)
+	if status != 200 {
+		t.Skipf("WASM scripting unavailable (tinygo not installed?): status=%d body=%v", status, compileResp)
+	}
+
+	var execResp map[string]interface{}
+	status = postJSON(t, hs, "/script/execute", ExecuteScriptRequest{Name: "echo", Input: "hi"}, &execResp)
+	if status != 200 {
+		t.Fatalf("execute failed: status=%d body=%v", status, execResp)
+	}
+	if execResp["output"] != "echo: hi\n" {
+		t.Errorf("unexpected output: %v", execResp["output"])
+	}
+
+	var listResp map[string]interface{}
+	status = getJSON(t, hs, "/script/list", &listResp)
+	if status != 200 {
+		t.Fatalf("list failed: status=%d", status)
+	}
+	scripts, ok := listResp["scripts"].([]interface{})
+	if !ok || len(scripts) != 1 {
+		t.Errorf("expected 1 script, got %v", listResp)
+	}
+}

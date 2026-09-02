@@ -145,6 +145,14 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 	hs.mux.HandleFunc("/pipeline/list", hs.handleListPipelines)
 	hs.mux.HandleFunc("/pipeline/delete", hs.handleDeletePipeline)
 
+	// Scripting (WASM -- real arbitrary Go code via TinyGo + wazero)
+	hs.mux.HandleFunc("/script/compile", hs.handleCompileScript)
+	hs.mux.HandleFunc("/script/execute", hs.handleExecuteScript)
+	hs.mux.HandleFunc("/script/execute-inline", hs.handleExecuteInlineScript)
+	hs.mux.HandleFunc("/script/get", hs.handleGetScript)
+	hs.mux.HandleFunc("/script/list", hs.handleListScripts)
+	hs.mux.HandleFunc("/script/delete", hs.handleDeleteScript)
+
 	// Search
 	hs.mux.HandleFunc("/search/index", hs.handleIndexDocument)
 	hs.mux.HandleFunc("/search/bm25", hs.handleSearchBM25)
@@ -1222,6 +1230,119 @@ func (hs *HTTPServer) handleDeletePipeline(w http.ResponseWriter, r *http.Reques
 		return
 	}
 	if err := hs.store.DeletePipeline(r.Context(), req.Name); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// ===== Scripting (WASM) =====
+
+// CompileScriptRequest represents a WASM script compile request
+type CompileScriptRequest struct {
+	Name   string `json:"name"`
+	Source string `json:"source"`
+}
+
+func (hs *HTTPServer) handleCompileScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req CompileScriptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	script, err := hs.store.CompileScript(r.Context(), req.Name, req.Source)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, script)
+}
+
+// ExecuteScriptRequest represents a registered-script execution request
+type ExecuteScriptRequest struct {
+	Name  string `json:"name"`
+	Input string `json:"input"`
+}
+
+func (hs *HTTPServer) handleExecuteScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ExecuteScriptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	output, err := hs.store.ExecuteScript(r.Context(), req.Name, req.Input)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error(), "output": output})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"output": output})
+}
+
+// ExecuteInlineScriptRequest represents an ad-hoc script execution request
+type ExecuteInlineScriptRequest struct {
+	Source string `json:"source"`
+	Input  string `json:"input"`
+}
+
+func (hs *HTTPServer) handleExecuteInlineScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ExecuteInlineScriptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	output, err := hs.store.ExecuteInlineScript(r.Context(), req.Source, req.Input)
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, map[string]interface{}{"error": err.Error(), "output": output})
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"output": output})
+}
+
+func (hs *HTTPServer) handleGetScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	script, err := hs.store.GetScript(r.Context(), name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, script)
+}
+
+func (hs *HTTPServer) handleListScripts(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"scripts": hs.store.ListScripts(r.Context())})
+}
+
+func (hs *HTTPServer) handleDeleteScript(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req ExecuteScriptRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := hs.store.DeleteScript(r.Context(), req.Name); err != nil {
 		writeError(w, http.StatusNotFound, err)
 		return
 	}

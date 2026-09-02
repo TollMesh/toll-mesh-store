@@ -546,6 +546,250 @@ class Client:
             {"stream": stream, "group": group, "consumer": consumer, "id": entry_id},
         )
 
+    # ===== Pub/Sub =====
+
+    def subscribe(self, subscriber_id: str, topic: str, pattern: str = "") -> None:
+        """Subscribe to a topic with optional regex pattern matching"""
+        self._request("POST", "/pubsub/subscribe", {"subscriber_id": subscriber_id, "topic": topic, "pattern": pattern})
+
+    def unsubscribe(self, subscriber_id: str, topic: str) -> None:
+        """Remove a subscription"""
+        self._request("POST", "/pubsub/unsubscribe", {"subscriber_id": subscriber_id, "topic": topic})
+
+    def publish(self, topic: str, publisher: str, payload: str) -> int:
+        """Publish a message to a topic; returns the number of subscribers it was delivered to"""
+        response = self._request("POST", "/pubsub/publish", {"topic": topic, "publisher": publisher, "payload": payload})
+        return response.get("delivered_count", 0)
+
+    def poll(self, subscriber_id: str, limit: int = 10, timeout: timedelta = timedelta(seconds=5)) -> list:
+        """
+        Retrieve up to limit currently-available messages for a subscriber,
+        waiting up to timeout if none are immediately available.
+
+        Example:
+            >>> client.subscribe('sub-1', 'events')
+            >>> client.publish('events', 'publisher-1', 'hello')
+            >>> messages = client.poll('sub-1')
+        """
+        response = self._request(
+            "POST",
+            "/pubsub/poll",
+            {"subscriber_id": subscriber_id, "limit": limit, "timeout_ms": int(timeout.total_seconds() * 1000)},
+        )
+        return response.get("messages") or []
+
+    def get_topics(self) -> list:
+        """Get all known pub/sub topics"""
+        return self._request("GET", "/pubsub/topics").get("topics") or []
+
+    def get_topic_subscribers(self, topic: str) -> list:
+        """Get subscriber IDs for a topic"""
+        return self._request("GET", "/pubsub/subscribers", params={"topic": topic}).get("subscribers") or []
+
+    def pubsub_stats(self) -> Dict[str, Any]:
+        """Get pub/sub statistics"""
+        return self._request("GET", "/pubsub/stats")
+
+    # ===== Transactions =====
+
+    def begin_transaction(self, txn_id: str) -> Dict[str, Any]:
+        """Start a new transaction"""
+        return self._request("POST", "/txn/begin", {"txn_id": txn_id})
+
+    def add_transaction_operation(self, txn_id: str, op_type: str, namespace: str, key: str, value: str = "") -> None:
+        """
+        Queue an operation within a pending transaction. Only "set"
+        operations are actually applied on commit.
+        """
+        self._request(
+            "POST",
+            "/txn/operation",
+            {"txn_id": txn_id, "type": op_type, "namespace": namespace, "key": key, "value": value},
+        )
+
+    def commit_transaction(self, txn_id: str) -> None:
+        """
+        Commit a transaction, applying all of its queued "set" operations
+        to the real cache atomically.
+
+        Example:
+            >>> client.begin_transaction('txn-1')
+            >>> client.add_transaction_operation('txn-1', 'set', 'ns', 'key', 'value')
+            >>> client.commit_transaction('txn-1')
+        """
+        self._request("POST", "/txn/commit", {"txn_id": txn_id})
+
+    def rollback_transaction(self, txn_id: str) -> None:
+        """Roll back a pending transaction, discarding its queued operations"""
+        self._request("POST", "/txn/rollback", {"txn_id": txn_id})
+
+    def transaction_status(self, txn_id: str) -> str:
+        """Get the status of a transaction: pending, committed, rolled_back, or failed"""
+        return self._request("GET", "/txn/status", params={"txn_id": txn_id}).get("status")
+
+    # ===== Persistence =====
+
+    def create_snapshot(self) -> None:
+        """Capture the current live store state to disk"""
+        self._request("POST", "/persistence/snapshot")
+
+    def get_latest_snapshot(self) -> Optional[Dict[str, Any]]:
+        """Get the most recent snapshot, or None if none exist"""
+        try:
+            return self._request("GET", "/persistence/snapshot/latest")
+        except TollMeshError:
+            return None
+
+    def restore_from_latest_snapshot(self) -> None:
+        """Load the most recent snapshot and apply it to live store state"""
+        self._request("POST", "/persistence/restore")
+
+    def persistence_stats(self) -> Dict[str, Any]:
+        """Get persistence statistics"""
+        return self._request("GET", "/persistence/stats")
+
+    # ===== Scripting: Pipelines (safe operation composition) =====
+
+    def register_pipeline(self, name: str, steps: list) -> None:
+        """
+        Register a named pipeline: an ordered list of steps, each naming an
+        existing store operation (e.g. "zadd", "get", "set") plus its
+        arguments. A step can save its result under a name for later steps
+        to reference via "$name".
+        """
+        self._request("POST", "/pipeline/register", {"name": name, "steps": steps})
+
+    def execute_pipeline(self, name: str) -> Dict[str, Any]:
+        """Run a registered pipeline by name"""
+        return self._request("POST", "/pipeline/execute", {"name": name})
+
+    def execute_inline_pipeline(self, steps: list) -> Dict[str, Any]:
+        """
+        Run an ad-hoc list of steps without registering them.
+
+        Example:
+            >>> client.execute_inline_pipeline([
+            ...     {"op": "set", "args": {"namespace": "ns", "key": "k", "value": "v"}},
+            ...     {"op": "get", "args": {"namespace": "ns", "key": "k"}, "save_as": "got"},
+            ... ])
+        """
+        return self._request("POST", "/pipeline/execute-inline", {"steps": steps})
+
+    def get_pipeline(self, name: str) -> Dict[str, Any]:
+        """Retrieve a registered pipeline by name"""
+        return self._request("GET", "/pipeline/get", params={"name": name})
+
+    def list_pipelines(self) -> list:
+        """List all registered pipelines"""
+        return self._request("GET", "/pipeline/list").get("pipelines") or []
+
+    def delete_pipeline(self, name: str) -> None:
+        """Remove a registered pipeline"""
+        self._request("POST", "/pipeline/delete", {"name": name})
+
+    # ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+    def compile_script(self, name: str, source: str) -> Dict[str, Any]:
+        """
+        Compile Go source to a sandboxed WASM module via TinyGo and
+        register it under name. This is slow (real seconds -- it invokes
+        an external compiler) and is expected to happen far less often
+        than execute_script.
+
+        Example:
+            >>> client.compile_script('greet', '''
+            ... package main
+            ... import ("bufio"; "fmt"; "os")
+            ... func main() {
+            ...     scanner := bufio.NewScanner(os.Stdin)
+            ...     scanner.Scan()
+            ...     fmt.Printf("Hello, %s!\\n", scanner.Text())
+            ... }
+            ... ''')
+            >>> client.execute_script('greet', 'World')
+            'Hello, World!\\n'
+        """
+        return self._request("POST", "/script/compile", {"name": name, "source": source})
+
+    def execute_script(self, name: str, input: str = "") -> str:
+        """Run a previously compiled script by name, feeding input on stdin"""
+        response = self._request("POST", "/script/execute", {"name": name, "input": input})
+        return response.get("output", "")
+
+    def execute_inline_script(self, source: str, input: str = "") -> str:
+        """Compile and immediately run Go source without registering it"""
+        response = self._request("POST", "/script/execute-inline", {"source": source, "input": input})
+        return response.get("output", "")
+
+    def get_script(self, name: str) -> Dict[str, Any]:
+        """Retrieve a registered script by name"""
+        return self._request("GET", "/script/get", params={"name": name})
+
+    def list_scripts(self) -> list:
+        """List all registered scripts"""
+        return self._request("GET", "/script/list").get("scripts") or []
+
+    def delete_script(self, name: str) -> None:
+        """Remove a registered script"""
+        self._request("POST", "/script/delete", {"name": name})
+
+    # ===== Search =====
+
+    def index_document(self, doc_id: str, content: str, metadata: Optional[dict] = None, vector: Optional[list] = None) -> None:
+        """Add a document to the search index"""
+        body = {"id": doc_id, "content": content}
+        if metadata is not None:
+            body["metadata"] = metadata
+        if vector is not None:
+            body["vector"] = vector
+        self._request("POST", "/search/index", body)
+
+    def search_bm25(self, query: str, top_k: int = 10) -> list:
+        """Perform BM25 full-text search"""
+        response = self._request("GET", "/search/bm25", params={"query": query, "topk": top_k})
+        return response.get("results") or []
+
+    def search_vector(self, vector: list, top_k: int = 10) -> list:
+        """Perform vector similarity search"""
+        response = self._request("POST", "/search/vector", {"vector": vector, "topk": top_k})
+        return response.get("results") or []
+
+    def search_hybrid(self, query: str, vector: list, top_k: int = 10) -> list:
+        """Perform hybrid BM25 + vector search"""
+        response = self._request("POST", "/search/hybrid", {"query": query, "vector": vector, "topk": top_k})
+        return response.get("results") or []
+
+    def delete_search_document(self, doc_id: str) -> None:
+        """Remove a document from the search index"""
+        self._request("POST", "/search/delete", {"id": doc_id})
+
+    # ===== Ranking =====
+
+    def rank(self, items: list, strategy: str = "bm25", boosts: Optional[dict] = None) -> list:
+        """
+        Re-rank a list of already-scored items ({"ID": ..., "Score": ...})
+        using the named strategy ("bm25", "vector", "llm", or "context").
+        boosts (for "context") is a per-ID score multiplier map.
+        """
+        body: Dict[str, Any] = {"items": items, "strategy": strategy}
+        if boosts is not None:
+            body["boosts"] = boosts
+        response = self._request("POST", "/rank", body)
+        return response.get("items") or []
+
+    # ===== Metrics =====
+
+    def get_metrics(self) -> Dict[str, Any]:
+        """Get current operational metrics"""
+        return self._request("GET", "/metrics")
+
+    def get_prometheus_metrics(self) -> str:
+        """Get metrics formatted for Prometheus scraping"""
+        url = self.config.base_url + "/metrics/prometheus"
+        response = self.session.get(url, timeout=self.config.timeout, verify=self.config.verify_ssl)
+        response.raise_for_status()
+        return response.text
+
     def close(self) -> None:
         """Close the client and cleanup resources"""
         self.session.close()

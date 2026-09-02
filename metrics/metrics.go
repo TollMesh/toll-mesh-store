@@ -2,10 +2,46 @@ package metrics
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
 )
+
+// maxLatencySamples bounds each latency slice so a long-running process
+// doesn't grow them without limit. Once full, new samples overwrite the
+// oldest ones (a ring buffer), so stats reflect a recent rolling window
+// rather than every operation since startup.
+const maxLatencySamples = 10000
+
+// latencyRing is a fixed-capacity ring buffer of latency samples: once full,
+// new samples overwrite the oldest, keeping memory bounded for a
+// long-running process while retaining a recent rolling window for stats.
+type latencyRing struct {
+	data   []int64
+	cursor int
+	count  int
+}
+
+func newLatencyRing(capacity int) *latencyRing {
+	return &latencyRing{data: make([]int64, capacity)}
+}
+
+func (r *latencyRing) add(v int64) {
+	r.data[r.cursor] = v
+	r.cursor = (r.cursor + 1) % len(r.data)
+	if r.count < len(r.data) {
+		r.count++
+	}
+}
+
+// values returns a copy of the currently held samples (unsorted, in
+// insertion order); the copy is safe for the caller to sort in place.
+func (r *latencyRing) values() []int64 {
+	out := make([]int64, r.count)
+	copy(out, r.data[:r.count])
+	return out
+}
 
 // Metrics tracks operational statistics for MeshStore
 type Metrics struct {
@@ -23,11 +59,11 @@ type Metrics struct {
 	setTotal       int64
 	cacheEvictions int64
 
-	// Latency metrics (in microseconds)
-	consumeLatencies []int64
-	seenLatencies    []int64
-	getLatencies     []int64
-	setLatencies     []int64
+	// Latency metrics (in microseconds), bounded ring buffers
+	consumeLatencies *latencyRing
+	seenLatencies    *latencyRing
+	getLatencies     *latencyRing
+	setLatencies     *latencyRing
 
 	// Gossip metrics
 	gossipMessagesIn  int64
@@ -42,10 +78,10 @@ type Metrics struct {
 func NewMetrics() *Metrics {
 	return &Metrics{
 		startTime:        time.Now(),
-		consumeLatencies: make([]int64, 0, 1000),
-		seenLatencies:    make([]int64, 0, 1000),
-		getLatencies:     make([]int64, 0, 1000),
-		setLatencies:     make([]int64, 0, 1000),
+		consumeLatencies: newLatencyRing(maxLatencySamples),
+		seenLatencies:    newLatencyRing(maxLatencySamples),
+		getLatencies:     newLatencyRing(maxLatencySamples),
+		setLatencies:     newLatencyRing(maxLatencySamples),
 	}
 }
 
@@ -59,7 +95,7 @@ func (m *Metrics) RecordConsume(allowed bool, latencyMicros int64) {
 	}
 
 	m.mu.Lock()
-	m.consumeLatencies = append(m.consumeLatencies, latencyMicros)
+	m.consumeLatencies.add(latencyMicros)
 	m.mu.Unlock()
 }
 
@@ -71,7 +107,7 @@ func (m *Metrics) RecordSeen(replay bool, latencyMicros int64) {
 	}
 
 	m.mu.Lock()
-	m.seenLatencies = append(m.seenLatencies, latencyMicros)
+	m.seenLatencies.add(latencyMicros)
 	m.mu.Unlock()
 }
 
@@ -85,7 +121,7 @@ func (m *Metrics) RecordGet(hit bool, latencyMicros int64) {
 	}
 
 	m.mu.Lock()
-	m.getLatencies = append(m.getLatencies, latencyMicros)
+	m.getLatencies.add(latencyMicros)
 	m.mu.Unlock()
 }
 
@@ -94,7 +130,7 @@ func (m *Metrics) RecordSet(latencyMicros int64) {
 	atomic.AddInt64(&m.setTotal, 1)
 
 	m.mu.Lock()
-	m.setLatencies = append(m.setLatencies, latencyMicros)
+	m.setLatencies.add(latencyMicros)
 	m.mu.Unlock()
 }
 
@@ -132,22 +168,22 @@ func (m *Metrics) GetStats() map[string]interface{} {
 		"consume_total":   atomic.LoadInt64(&m.consumeTotal),
 		"consume_allowed": atomic.LoadInt64(&m.consumeAllowed),
 		"consume_denied":  atomic.LoadInt64(&m.consumeDenied),
-		"consume_latency": m.calculateLatencyStats(m.consumeLatencies),
+		"consume_latency": m.calculateLatencyStats(m.consumeLatencies.values()),
 
 		// Seen metrics
 		"seen_total":   atomic.LoadInt64(&m.seenTotal),
 		"seen_replays": atomic.LoadInt64(&m.seenReplays),
-		"seen_latency": m.calculateLatencyStats(m.seenLatencies),
+		"seen_latency": m.calculateLatencyStats(m.seenLatencies.values()),
 
 		// Get metrics
 		"get_total":   atomic.LoadInt64(&m.getTotal),
 		"get_hits":    atomic.LoadInt64(&m.getHits),
 		"get_misses":  atomic.LoadInt64(&m.getMisses),
-		"get_latency": m.calculateLatencyStats(m.getLatencies),
+		"get_latency": m.calculateLatencyStats(m.getLatencies.values()),
 
 		// Set metrics
 		"set_total":   atomic.LoadInt64(&m.setTotal),
-		"set_latency": m.calculateLatencyStats(m.setLatencies),
+		"set_latency": m.calculateLatencyStats(m.setLatencies.values()),
 
 		// Cache metrics
 		"cache_evictions": atomic.LoadInt64(&m.cacheEvictions),
@@ -187,9 +223,17 @@ func (m *Metrics) calculateLatencyStats(latencies []int64) map[string]interface{
 	}
 	avg := sum / int64(len(latencies))
 
-	// Calculate percentiles (simplified)
-	p50 := latencies[len(latencies)/2]
-	p99 := latencies[(len(latencies)*99)/100]
+	// Percentiles require values in magnitude order, not insertion order --
+	// indexing directly into the unsorted slice (the previous behavior)
+	// returned whatever value happened to occupy that array position, not
+	// the actual percentile. Sort a copy so the caller's slice (which may
+	// still be read elsewhere) is untouched.
+	sorted := make([]int64, len(latencies))
+	copy(sorted, latencies)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i] < sorted[j] })
+
+	p50 := sorted[len(sorted)/2]
+	p99 := sorted[(len(sorted)*99)/100]
 
 	return map[string]interface{}{
 		"count": len(latencies),

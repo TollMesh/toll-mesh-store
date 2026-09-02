@@ -167,6 +167,188 @@ module TollMeshCache
       post('/stream/group/ack', { stream: stream, group: group, consumer: consumer, id: entry_id })
     end
 
+    # ===== Pub/Sub =====
+
+    def subscribe(subscriber_id, topic, pattern: '')
+      post('/pubsub/subscribe', { subscriber_id: subscriber_id, topic: topic, pattern: pattern })
+    end
+
+    def unsubscribe(subscriber_id, topic)
+      post('/pubsub/unsubscribe', { subscriber_id: subscriber_id, topic: topic })
+    end
+
+    def publish(topic, publisher, payload)
+      response = post('/pubsub/publish', { topic: topic, publisher: publisher, payload: payload })
+      response['delivered_count'] || 0
+    end
+
+    def poll(subscriber_id, limit: 10, timeout_ms: 5000)
+      response = post('/pubsub/poll', { subscriber_id: subscriber_id, limit: limit, timeout_ms: timeout_ms })
+      response['messages'] || []
+    end
+
+    def get_topics
+      response = get('/pubsub/topics')
+      response['topics'] || []
+    end
+
+    def get_topic_subscribers(topic)
+      response = get('/pubsub/subscribers', query: { topic: topic })
+      response['subscribers'] || []
+    end
+
+    def pubsub_stats
+      get('/pubsub/stats')
+    end
+
+    # ===== Transactions =====
+
+    def begin_transaction(txn_id)
+      post('/txn/begin', { txn_id: txn_id })
+    end
+
+    def add_transaction_operation(txn_id, type, namespace, key, value = '')
+      post('/txn/operation', { txn_id: txn_id, type: type, namespace: namespace, key: key, value: value })
+    end
+
+    def commit_transaction(txn_id)
+      post('/txn/commit', { txn_id: txn_id })
+    end
+
+    def rollback_transaction(txn_id)
+      post('/txn/rollback', { txn_id: txn_id })
+    end
+
+    def transaction_status(txn_id)
+      response = get('/txn/status', query: { txn_id: txn_id })
+      response['status']
+    end
+
+    # ===== Persistence =====
+
+    def create_snapshot
+      post('/persistence/snapshot', {})
+    end
+
+    def get_latest_snapshot
+      get('/persistence/snapshot/latest')
+    rescue Error
+      nil
+    end
+
+    def restore_from_latest_snapshot
+      post('/persistence/restore', {})
+    end
+
+    def persistence_stats
+      get('/persistence/stats')
+    end
+
+    # ===== Scripting: Pipelines (safe operation composition) =====
+
+    def register_pipeline(name, steps)
+      post('/pipeline/register', { name: name, steps: steps })
+    end
+
+    def execute_pipeline(name)
+      post('/pipeline/execute', { name: name })
+    end
+
+    def execute_inline_pipeline(steps)
+      post('/pipeline/execute-inline', { steps: steps })
+    end
+
+    def get_pipeline(name)
+      get('/pipeline/get', query: { name: name })
+    end
+
+    def list_pipelines
+      response = get('/pipeline/list')
+      response['pipelines'] || []
+    end
+
+    def delete_pipeline(name)
+      post('/pipeline/delete', { name: name })
+    end
+
+    # ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+    def compile_script(name, source)
+      post('/script/compile', { name: name, source: source })
+    end
+
+    def execute_script(name, input = '')
+      response = post('/script/execute', { name: name, input: input })
+      response['output'] || ''
+    end
+
+    def execute_inline_script(source, input = '')
+      response = post('/script/execute-inline', { source: source, input: input })
+      response['output'] || ''
+    end
+
+    def get_script(name)
+      get('/script/get', query: { name: name })
+    end
+
+    def list_scripts
+      response = get('/script/list')
+      response['scripts'] || []
+    end
+
+    def delete_script(name)
+      post('/script/delete', { name: name })
+    end
+
+    # ===== Search =====
+
+    def index_document(id, content, metadata: nil, vector: nil)
+      body = { id: id, content: content }
+      body[:metadata] = metadata if metadata
+      body[:vector] = vector if vector
+      post('/search/index', body)
+    end
+
+    def search_bm25(query, top_k: 10)
+      response = get('/search/bm25', query: { query: query, topk: top_k })
+      response['results'] || []
+    end
+
+    def search_vector(vector, top_k: 10)
+      response = post('/search/vector', { vector: vector, topk: top_k })
+      response['results'] || []
+    end
+
+    def search_hybrid(query, vector, top_k: 10)
+      response = post('/search/hybrid', { query: query, vector: vector, topk: top_k })
+      response['results'] || []
+    end
+
+    def delete_search_document(id)
+      post('/search/delete', { id: id })
+    end
+
+    # ===== Ranking =====
+
+    def rank(items, strategy: 'bm25', boosts: nil)
+      body = { items: items, strategy: strategy }
+      body[:boosts] = boosts if boosts
+      response = post('/rank', body)
+      response['items'] || []
+    end
+
+    # ===== Metrics =====
+
+    def get_metrics
+      get('/metrics')
+    end
+
+    def get_prometheus_metrics
+      url = @config.base_url + '/metrics/prometheus'
+      response = @http.get(url, header: { 'User-Agent' => 'tollmeshcache-ruby/1.0.0' })
+      response.body
+    end
+
     def close
       @http.close if @http
     end

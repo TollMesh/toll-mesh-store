@@ -107,3 +107,30 @@ func TestExpiringSet_BackgroundCleanup(t *testing.T) {
 
 	set.Stop()
 }
+
+func TestGCounter_SnapshotRestore(t *testing.T) {
+	g := NewGCounter()
+	g.Increment("node1")
+	g.Increment("node1")
+	g.Increment("node2")
+
+	snap := g.Snapshot()
+	restored := RestoreGCounter(snap)
+
+	if restored.Value() != g.Value() {
+		t.Errorf("expected restored value %d, got %d", g.Value(), restored.Value())
+	}
+}
+
+func TestGSet_SnapshotRestore(t *testing.T) {
+	g := NewGSet()
+	g.Add("a")
+	g.Add("b")
+
+	snap := g.Snapshot()
+	restored := RestoreGSet(snap)
+
+	if !restored.Contains("a") || !restored.Contains("b") {
+		t.Error("restored set missing items from snapshot")
+	}
+}

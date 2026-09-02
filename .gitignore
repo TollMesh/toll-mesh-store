@@ -89,3 +89,7 @@ site/
 !README.md
 !CONTRIBUTING.md
 !docs/**/*.md
+
+# Runtime persistence output (WAL segments, snapshots) -- not repo content
+/data/
+/*/data/

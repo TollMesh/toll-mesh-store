@@ -13,6 +13,7 @@ func TestMeshStore_Consume_RateLimiting(t *testing.T) {
 		NodeName: "node1",
 		BindAddr: "127.0.0.1",
 		BindPort: 8000,
+		DataDir:  t.TempDir(),
 	}
 	store, err := NewMeshStore(config)
 	if err != nil {
@@ -62,6 +63,7 @@ func TestMeshStore_Seen_ReplayProtection(t *testing.T) {
 		NodeName: "node1",
 		BindAddr: "127.0.0.1",
 		BindPort: 8000,
+		DataDir:  t.TempDir(),
 	}
 	store, err := NewMeshStore(config)
 	if err != nil {
@@ -93,6 +95,7 @@ func TestMeshStore_GetSet_CacheOperations(t *testing.T) {
 		NodeName: "node1",
 		BindAddr: "127.0.0.1",
 		BindPort: 8000,
+		DataDir:  t.TempDir(),
 	}
 	store, err := NewMeshStore(config)
 	if err != nil {
@@ -151,6 +154,7 @@ func TestMeshStore_ConcurrentAccess(t *testing.T) {
 		NodeName: "node1",
 		BindAddr: "127.0.0.1",
 		BindPort: 8000,
+		DataDir:  t.TempDir(),
 	}
 	store, err := NewMeshStore(config)
 	if err != nil {

@@ -4,9 +4,15 @@ import (
 	"context"
 	"time"
 
+	"github.com/toll-mesh/store/persistence"
+	"github.com/toll-mesh/store/pubsub"
 	"github.com/toll-mesh/store/queue"
+	"github.com/toll-mesh/store/ranking"
+	"github.com/toll-mesh/store/scripting"
+	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/sortedset"
 	"github.com/toll-mesh/store/stream"
+	"github.com/toll-mesh/store/transactions"
 )
 
 // Store is the distributed store interface for Toll Mesh coordination.
@@ -43,6 +49,50 @@ type Store interface {
 	XGroupCreate(ctx context.Context, streamName, groupName string) error
 	XReadGroup(ctx context.Context, streamName, groupName, consumerID string, limit int64) ([]*stream.StreamEntry, error)
 	XAck(ctx context.Context, streamName, groupName, consumerID, entryID string) error
+
+	// Pub/Sub
+	Subscribe(ctx context.Context, subscriberID, topic, pattern string) error
+	Unsubscribe(ctx context.Context, subscriberID, topic string) error
+	Publish(ctx context.Context, topic, publisher string, payload []byte) (int, error)
+	PollMessages(ctx context.Context, subscriberID string, limit int, timeout time.Duration) ([]pubsub.Message, error)
+	GetTopics(ctx context.Context) []string
+	GetTopicSubscribers(ctx context.Context, topic string) []string
+	GetPubSubStats(ctx context.Context) map[string]interface{}
+
+	// Transactions
+	BeginTransaction(ctx context.Context, txnID string) (*transactions.Transaction, error)
+	AddTransactionOperation(ctx context.Context, txnID string, op transactions.Operation) error
+	CommitTransaction(ctx context.Context, txnID string) error
+	RollbackTransaction(ctx context.Context, txnID string) error
+	GetTransactionStatus(ctx context.Context, txnID string) (transactions.TransactionStatus, error)
+
+	// Persistence
+	CreateSnapshot(ctx context.Context) error
+	GetLatestSnapshot(ctx context.Context) (*persistence.Snapshot, error)
+	RestoreFromLatestSnapshot(ctx context.Context) error
+	GetPersistenceStats(ctx context.Context) map[string]interface{}
+
+	// Scripting (Pipelines)
+	RegisterPipeline(ctx context.Context, p *scripting.Pipeline) error
+	ExecutePipeline(ctx context.Context, name string) (*scripting.ExecutionResult, error)
+	ExecuteInlinePipeline(ctx context.Context, steps []scripting.Step) (*scripting.ExecutionResult, error)
+	GetPipeline(ctx context.Context, name string) (*scripting.Pipeline, error)
+	ListPipelines(ctx context.Context) []*scripting.Pipeline
+	DeletePipeline(ctx context.Context, name string) error
+
+	// Search
+	IndexDocument(ctx context.Context, doc *search.Document) error
+	SearchBM25(ctx context.Context, query string, topK int) []search.SearchResult
+	SearchVector(ctx context.Context, vector []float32, topK int) []search.SearchResult
+	SearchHybrid(ctx context.Context, query string, vector []float32, topK int) []search.SearchResult
+	DeleteSearchDocument(ctx context.Context, id string) error
+
+	// Ranking
+	Rank(ctx context.Context, items []ranking.RankedItem, strategy string, boosts map[string]float32) []ranking.RankedItem
+
+	// Metrics
+	GetMetrics(ctx context.Context) map[string]interface{}
+	GetPrometheusMetrics(ctx context.Context) string
 }
 
 // ConsumeResult represents the outcome of a rate limit check.
@@ -68,6 +118,9 @@ type ClusterConfig struct {
 	AdvertisePort int
 	Nodes         []Node
 	EncryptionKey []byte
+	// DataDir is where persistence (WAL segments, snapshots) is written.
+	// Defaults to "./data/<NodeName>" if empty.
+	DataDir string
 }
 
 // MeshStoreState is a serializable snapshot of a MeshStore's CRDT state,

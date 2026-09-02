@@ -17,6 +17,7 @@ func newTestServer(t *testing.T) *HTTPServer {
 		NodeName: "node1",
 		BindAddr: "127.0.0.1",
 		BindPort: 9000,
+		DataDir:  t.TempDir(),
 	}
 	ms, err := store.NewMeshStore(config)
 	if err != nil {

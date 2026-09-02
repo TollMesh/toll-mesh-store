@@ -3,13 +3,21 @@ package store
 import (
 	"context"
 	"fmt"
+	"path/filepath"
 	"sync"
 	"time"
 
 	"github.com/toll-mesh/store/core"
+	"github.com/toll-mesh/store/metrics"
+	"github.com/toll-mesh/store/persistence"
+	"github.com/toll-mesh/store/pubsub"
 	"github.com/toll-mesh/store/queue"
+	"github.com/toll-mesh/store/ranking"
+	"github.com/toll-mesh/store/scripting"
+	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/sortedset"
 	"github.com/toll-mesh/store/stream"
+	"github.com/toll-mesh/store/transactions"
 )
 
 // MeshStore implements the Store interface using CRDTs and gossip protocol.
@@ -33,10 +41,31 @@ type MeshStore struct {
 	groupsMu sync.RWMutex
 	// keyed by "streamName:groupName"
 	groups map[string]*stream.ConsumerGroup
+
+	pubsubBroker *pubsub.PubSubBroker
+	txnManager   *transactions.TransactionManager
+	persistence  *persistence.PersistenceEngine
+	pipelines    *scripting.Engine
+	searchEngine *search.HybridSearchEngine
+	metricsColl  *metrics.Metrics
 }
 
 // NewMeshStore creates a new MeshStore instance.
 func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
+	dataDir := config.DataDir
+	if dataDir == "" {
+		dataDir = filepath.Join("data", config.NodeName)
+	}
+
+	pe, err := persistence.NewPersistenceEngine(
+		filepath.Join(dataDir, "wal"),
+		filepath.Join(dataDir, "snapshots"),
+		5*time.Minute,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create persistence engine: %w", err)
+	}
+
 	ms := &MeshStore{
 		config:           config,
 		rateLimiters:     make(map[string]*core.GCounter),
@@ -48,9 +77,75 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		zsets:            make(map[string]*sortedset.SortedSet),
 		streams:          make(map[string]*stream.Stream),
 		groups:           make(map[string]*stream.ConsumerGroup),
+		pubsubBroker:     pubsub.NewPubSubBroker(1000),
+		txnManager:       transactions.NewTransactionManager(1000, 5*time.Minute),
+		persistence:      pe,
+		pipelines:        scripting.NewEngine(50, 30*time.Second),
+		searchEngine:     search.NewHybridSearchEngine(),
+		metricsColl:      metrics.NewMetrics(),
 	}
+
+	ms.registerPipelineHandlers()
+
 	go ms.backgroundCleanup()
 	return ms, nil
+}
+
+// registerPipelineHandlers exposes the store's own operations as pipeline
+// step handlers, so a Pipeline can only ever do what the store already does
+// through its normal API -- there is no separate execution surface.
+func (ms *MeshStore) registerPipelineHandlers() {
+	ctx := context.Background()
+
+	ms.pipelines.RegisterHandler("get", func(args map[string]interface{}) (interface{}, error) {
+		ns, _ := args["namespace"].(string)
+		key, _ := args["key"].(string)
+		value, exists, err := ms.Get(ctx, ns, key)
+		if err != nil {
+			return nil, err
+		}
+		return map[string]interface{}{"value": string(value), "exists": exists}, nil
+	})
+
+	ms.pipelines.RegisterHandler("set", func(args map[string]interface{}) (interface{}, error) {
+		ns, _ := args["namespace"].(string)
+		key, _ := args["key"].(string)
+		value, _ := args["value"].(string)
+		ttlMs, _ := args["ttl"].(float64)
+		return nil, ms.Set(ctx, ns, key, []byte(value), time.Duration(ttlMs)*time.Millisecond)
+	})
+
+	ms.pipelines.RegisterHandler("zadd", func(args map[string]interface{}) (interface{}, error) {
+		key, _ := args["key"].(string)
+		member, _ := args["member"].(string)
+		score, _ := args["score"].(float64)
+		return nil, ms.ZAdd(ctx, key, member, score)
+	})
+
+	ms.pipelines.RegisterHandler("zscore", func(args map[string]interface{}) (interface{}, error) {
+		key, _ := args["key"].(string)
+		member, _ := args["member"].(string)
+		score, exists := ms.ZScore(ctx, key, member)
+		return map[string]interface{}{"score": score, "exists": exists}, nil
+	})
+
+	ms.pipelines.RegisterHandler("enqueue", func(args map[string]interface{}) (interface{}, error) {
+		queueName, _ := args["queue"].(string)
+		payload, _ := args["payload"].(string)
+		priority, _ := args["priority"].(float64)
+		return ms.Enqueue(ctx, queueName, []byte(payload), int(priority), 3, 24*time.Hour)
+	})
+
+	ms.pipelines.RegisterHandler("xadd", func(args map[string]interface{}) (interface{}, error) {
+		streamName, _ := args["stream"].(string)
+		fields := map[string]string{}
+		if raw, ok := args["fields"].(map[string]interface{}); ok {
+			for k, v := range raw {
+				fields[k] = fmt.Sprintf("%v", v)
+			}
+		}
+		return ms.XAdd(ctx, streamName, fields)
+	})
 }
 
 func (ms *MeshStore) getOrCreateZSet(key string) *sortedset.SortedSet {
@@ -301,6 +396,10 @@ func (ms *MeshStore) XAck(ctx context.Context, streamName, groupName, consumerID
 
 // Consume implements rate limiting using GCounter CRDT.
 func (ms *MeshStore) Consume(ctx context.Context, key string, limit int, window time.Duration) (core.ConsumeResult, error) {
+	start := time.Now()
+	var allowed bool
+	defer func() { ms.metricsColl.RecordConsume(allowed, time.Since(start).Microseconds()) }()
+
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -313,6 +412,7 @@ func (ms *MeshStore) Consume(ctx context.Context, key string, limit int, window 
 	current := counter.Value()
 	if current < limit {
 		counter.Increment(ms.config.NodeName)
+		allowed = true
 		return core.ConsumeResult{
 			OK:        true,
 			Remaining: limit - current - 1,
@@ -329,10 +429,15 @@ func (ms *MeshStore) Consume(ctx context.Context, key string, limit int, window 
 
 // Seen implements replay protection using GSet CRDT.
 func (ms *MeshStore) Seen(ctx context.Context, key string, ttl time.Duration) (bool, error) {
+	start := time.Now()
+	var replay bool
+	defer func() { ms.metricsColl.RecordSeen(replay, time.Since(start).Microseconds()) }()
+
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
 	if ms.replayProtection.Contains(key) {
+		replay = true
 		return true, nil
 	}
 
@@ -342,6 +447,10 @@ func (ms *MeshStore) Seen(ctx context.Context, key string, ttl time.Duration) (b
 
 // Get retrieves a cached value.
 func (ms *MeshStore) Get(ctx context.Context, ns, key string) ([]byte, bool, error) {
+	start := time.Now()
+	var hit bool
+	defer func() { ms.metricsColl.RecordGet(hit, time.Since(start).Microseconds()) }()
+
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -364,11 +473,15 @@ func (ms *MeshStore) Get(ctx context.Context, ns, key string) ([]byte, bool, err
 		}
 	}
 
+	hit = true
 	return value, true, nil
 }
 
 // Set stores a value with TTL.
 func (ms *MeshStore) Set(ctx context.Context, ns, key string, value []byte, ttl time.Duration) error {
+	start := time.Now()
+	defer func() { ms.metricsColl.RecordSet(time.Since(start).Microseconds()) }()
+
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
 
@@ -396,8 +509,307 @@ func (ms *MeshStore) Set(ctx context.Context, ns, key string, value []byte, ttl 
 // Close gracefully shuts down the store.
 func (ms *MeshStore) Close() error {
 	ms.jobManager.Stop()
+	ms.persistence.Close()
 	close(ms.stopChan)
 	return nil
+}
+
+// ===== Pub/Sub =====
+
+// Subscribe subscribes to a topic with optional regex pattern matching.
+func (ms *MeshStore) Subscribe(ctx context.Context, subscriberID, topic, pattern string) error {
+	_, err := ms.pubsubBroker.Subscribe(subscriberID, topic, pattern)
+	return err
+}
+
+// Unsubscribe removes a subscription.
+func (ms *MeshStore) Unsubscribe(ctx context.Context, subscriberID, topic string) error {
+	return ms.pubsubBroker.Unsubscribe(subscriberID, topic)
+}
+
+// Publish publishes a message to a topic, returning the number of
+// subscribers it was delivered to.
+func (ms *MeshStore) Publish(ctx context.Context, topic, publisher string, payload []byte) (int, error) {
+	return ms.pubsubBroker.Publish(topic, publisher, payload)
+}
+
+// PollMessages retrieves up to limit currently-available messages for a
+// subscriber, waiting up to timeout if none are immediately available.
+func (ms *MeshStore) PollMessages(ctx context.Context, subscriberID string, limit int, timeout time.Duration) ([]pubsub.Message, error) {
+	return ms.pubsubBroker.Poll(subscriberID, limit, timeout)
+}
+
+// GetTopics returns all known pub/sub topics.
+func (ms *MeshStore) GetTopics(ctx context.Context) []string {
+	return ms.pubsubBroker.GetTopics()
+}
+
+// GetTopicSubscribers returns subscriber IDs for a topic.
+func (ms *MeshStore) GetTopicSubscribers(ctx context.Context, topic string) []string {
+	return ms.pubsubBroker.GetSubscribers(topic)
+}
+
+// GetPubSubStats returns pub/sub statistics.
+func (ms *MeshStore) GetPubSubStats(ctx context.Context) map[string]interface{} {
+	return ms.pubsubBroker.GetStats()
+}
+
+// ===== Transactions =====
+
+// BeginTransaction starts a new transaction.
+func (ms *MeshStore) BeginTransaction(ctx context.Context, txnID string) (*transactions.Transaction, error) {
+	return ms.txnManager.BeginTransaction(txnID)
+}
+
+// AddTransactionOperation queues an operation within a pending transaction.
+// Only OpSet operations are actually applied on commit; other operation
+// types are recorded for audit purposes but do not affect store state --
+// Consume/Seen have side effects (incrementing shared counters) that don't
+// have well-defined "deferred apply" semantics the way a plain key/value
+// write does.
+func (ms *MeshStore) AddTransactionOperation(ctx context.Context, txnID string, op transactions.Operation) error {
+	return ms.txnManager.AddOperation(txnID, op)
+}
+
+// CommitTransaction validates and commits a transaction, then applies all
+// of its queued Set operations to the real cache atomically (under the
+// store's own lock, so no other Set/Get can interleave mid-apply).
+func (ms *MeshStore) CommitTransaction(ctx context.Context, txnID string) error {
+	ops, err := ms.txnManager.GetTransactionOperations(txnID)
+	if err != nil {
+		return err
+	}
+
+	if err := ms.txnManager.CommitTransaction(txnID); err != nil {
+		return err
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	for _, op := range ops {
+		if op.Type != transactions.OpSet {
+			continue
+		}
+		valueStr, _ := op.Value.(string)
+		if _, exists := ms.cache[op.Namespace]; !exists {
+			ms.cache[op.Namespace] = make(map[string][]byte)
+			ms.cacheTTL[op.Namespace] = make(map[string]time.Time)
+		}
+		ms.cache[op.Namespace][op.Key] = []byte(valueStr)
+		delete(ms.cacheTTL[op.Namespace], op.Key)
+	}
+
+	return nil
+}
+
+// RollbackTransaction rolls back a pending transaction. Since queued
+// operations are never applied to real state until commit, rollback is
+// simply discarding the queue -- there is nothing to undo.
+func (ms *MeshStore) RollbackTransaction(ctx context.Context, txnID string) error {
+	return ms.txnManager.RollbackTransaction(txnID)
+}
+
+// GetTransactionStatus returns the status of a transaction.
+func (ms *MeshStore) GetTransactionStatus(ctx context.Context, txnID string) (transactions.TransactionStatus, error) {
+	return ms.txnManager.GetTransactionStatus(txnID)
+}
+
+// ===== Persistence =====
+
+// CreateSnapshot captures the current live store state to disk.
+func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
+	ms.mu.RLock()
+	rateLimiters := make(map[string]interface{}, len(ms.rateLimiters))
+	for k, v := range ms.rateLimiters {
+		rateLimiters[k] = v.Snapshot()
+	}
+	replayProtection := ms.replayProtection.Snapshot()
+
+	cacheCopy := make(map[string]map[string][]byte, len(ms.cache))
+	for ns, kv := range ms.cache {
+		nsCopy := make(map[string][]byte, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = v
+		}
+		cacheCopy[ns] = nsCopy
+	}
+
+	cacheTTLCopy := make(map[string]map[string]int64, len(ms.cacheTTL))
+	for ns, kv := range ms.cacheTTL {
+		nsCopy := make(map[string]int64, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = v.UnixMilli()
+		}
+		cacheTTLCopy[ns] = nsCopy
+	}
+	ms.mu.RUnlock()
+
+	snap := &persistence.Snapshot{
+		RateLimiters:     rateLimiters,
+		ReplayProtection: replayProtection,
+		Cache:            cacheCopy,
+		CacheTTL:         cacheTTLCopy,
+	}
+
+	return ms.persistence.CreateSnapshot(snap)
+}
+
+// GetLatestSnapshot returns the most recent snapshot, or nil if none exist.
+func (ms *MeshStore) GetLatestSnapshot(ctx context.Context) (*persistence.Snapshot, error) {
+	return ms.persistence.LoadLatestSnapshot()
+}
+
+// RestoreFromLatestSnapshot loads the most recent snapshot and applies it
+// to live store state, replacing current rate limiters, replay-protection
+// records, and cache contents.
+func (ms *MeshStore) RestoreFromLatestSnapshot(ctx context.Context) error {
+	snap, err := ms.persistence.LoadLatestSnapshot()
+	if err != nil {
+		return err
+	}
+	if snap == nil {
+		return fmt.Errorf("no snapshot available")
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	ms.rateLimiters = make(map[string]*core.GCounter, len(snap.RateLimiters))
+	for k, v := range snap.RateLimiters {
+		counts := map[string]int{}
+		if raw, ok := v.(map[string]interface{}); ok {
+			for node, c := range raw {
+				if f, ok := c.(float64); ok {
+					counts[node] = int(f)
+				}
+			}
+		}
+		ms.rateLimiters[k] = core.RestoreGCounter(counts)
+	}
+
+	ms.replayProtection = core.RestoreGSet(snap.ReplayProtection)
+
+	ms.cache = make(map[string]map[string][]byte, len(snap.Cache))
+	for ns, kv := range snap.Cache {
+		nsCopy := make(map[string][]byte, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = v
+		}
+		ms.cache[ns] = nsCopy
+	}
+
+	ms.cacheTTL = make(map[string]map[string]time.Time, len(snap.CacheTTL))
+	for ns, kv := range snap.CacheTTL {
+		nsCopy := make(map[string]time.Time, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = time.UnixMilli(v)
+		}
+		ms.cacheTTL[ns] = nsCopy
+	}
+
+	return nil
+}
+
+// GetPersistenceStats returns persistence statistics.
+func (ms *MeshStore) GetPersistenceStats(ctx context.Context) map[string]interface{} {
+	return ms.persistence.GetStats()
+}
+
+// ===== Scripting (Pipelines) =====
+
+// RegisterPipeline registers a named pipeline for later execution by name.
+func (ms *MeshStore) RegisterPipeline(ctx context.Context, p *scripting.Pipeline) error {
+	return ms.pipelines.RegisterPipeline(p)
+}
+
+// ExecutePipeline runs a registered pipeline by name.
+func (ms *MeshStore) ExecutePipeline(ctx context.Context, name string) (*scripting.ExecutionResult, error) {
+	return ms.pipelines.Execute(name)
+}
+
+// ExecuteInlinePipeline runs an ad-hoc list of steps without registering them.
+func (ms *MeshStore) ExecuteInlinePipeline(ctx context.Context, steps []scripting.Step) (*scripting.ExecutionResult, error) {
+	return ms.pipelines.ExecuteInline(steps)
+}
+
+// GetPipeline retrieves a registered pipeline by name.
+func (ms *MeshStore) GetPipeline(ctx context.Context, name string) (*scripting.Pipeline, error) {
+	return ms.pipelines.GetPipeline(name)
+}
+
+// ListPipelines returns all registered pipelines.
+func (ms *MeshStore) ListPipelines(ctx context.Context) []*scripting.Pipeline {
+	return ms.pipelines.ListPipelines()
+}
+
+// DeletePipeline removes a registered pipeline.
+func (ms *MeshStore) DeletePipeline(ctx context.Context, name string) error {
+	return ms.pipelines.DeletePipeline(name)
+}
+
+// ===== Search =====
+
+// IndexDocument adds a document to the search index.
+func (ms *MeshStore) IndexDocument(ctx context.Context, doc *search.Document) error {
+	return ms.searchEngine.IndexDocument(doc)
+}
+
+// SearchBM25 performs BM25 full-text search.
+func (ms *MeshStore) SearchBM25(ctx context.Context, query string, topK int) []search.SearchResult {
+	return ms.searchEngine.SearchBM25(query, topK)
+}
+
+// SearchVector performs vector similarity search.
+func (ms *MeshStore) SearchVector(ctx context.Context, vector []float32, topK int) []search.SearchResult {
+	return ms.searchEngine.SearchVector(vector, topK)
+}
+
+// SearchHybrid performs hybrid BM25 + vector search.
+func (ms *MeshStore) SearchHybrid(ctx context.Context, query string, vector []float32, topK int) []search.SearchResult {
+	return ms.searchEngine.SearchHybrid(query, vector, topK)
+}
+
+// DeleteSearchDocument removes a document from the search index.
+func (ms *MeshStore) DeleteSearchDocument(ctx context.Context, id string) error {
+	return ms.searchEngine.DeleteDocument(id)
+}
+
+// ===== Ranking =====
+
+// Rank re-ranks a list of already-scored items using the named strategy
+// ("bm25", "vector", "llm", or "context"; unknown names fall back to
+// "bm25" -- see ranking.LLMRanker's doc comment for why "llm" is not an
+// actual LLM call). boosts, if non-nil, applies to the "context" strategy
+// as per-ID score multipliers.
+func (ms *MeshStore) Rank(ctx context.Context, items []ranking.RankedItem, strategy string, boosts map[string]float32) []ranking.RankedItem {
+	var ranker ranking.Ranker
+	switch strategy {
+	case "vector":
+		ranker = ranking.NewVectorRanker()
+	case "llm":
+		ranker = ranking.NewLLMRanker()
+	case "context":
+		ctxMap := map[string]interface{}{}
+		if boosts != nil {
+			ctxMap["boosts"] = boosts
+		}
+		ranker = ranking.NewContextRanker(ctxMap)
+	default:
+		ranker = ranking.NewBM25Ranker()
+	}
+	return ranker.Rank(items)
+}
+
+// ===== Metrics =====
+
+// GetMetrics returns current operational metrics as a map.
+func (ms *MeshStore) GetMetrics(ctx context.Context) map[string]interface{} {
+	return ms.metricsColl.GetStats()
+}
+
+// GetPrometheusMetrics returns metrics formatted for Prometheus scraping.
+func (ms *MeshStore) GetPrometheusMetrics(ctx context.Context) string {
+	return ms.metricsColl.PrometheusMetrics()
 }
 
 // backgroundCleanup removes expired cache entries.

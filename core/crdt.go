@@ -1,6 +1,7 @@
 package core
 
 import (
+	"maps"
 	"sync"
 	"time"
 )
@@ -31,6 +32,26 @@ func (g *GCounter) Value() int {
 		total += count
 	}
 	return total
+}
+
+// Snapshot returns a copy of this counter's per-node counts, for
+// persistence. The returned map is safe to mutate independently.
+func (g *GCounter) Snapshot() map[string]int {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	out := make(map[string]int, len(g.counts))
+	maps.Copy(out, g.counts)
+	return out
+}
+
+// RestoreGCounter reconstructs a GCounter from a snapshot produced by
+// Snapshot, for loading persisted state back into a live store.
+func RestoreGCounter(counts map[string]int) *GCounter {
+	g := NewGCounter()
+	for k, v := range counts {
+		g.counts[k] = v
+	}
+	return g
 }
 
 func (g *GCounter) Merge(other *GCounter) {
@@ -69,6 +90,26 @@ func (g *GSet) Contains(item string) bool {
 	defer g.mu.RUnlock()
 	_, exists := g.items[item]
 	return exists
+}
+
+// Snapshot returns a copy of this set's items, for persistence.
+func (g *GSet) Snapshot() []string {
+	g.mu.RLock()
+	defer g.mu.RUnlock()
+	out := make([]string, 0, len(g.items))
+	for item := range g.items {
+		out = append(out, item)
+	}
+	return out
+}
+
+// RestoreGSet reconstructs a GSet from a snapshot produced by Snapshot.
+func RestoreGSet(items []string) *GSet {
+	g := NewGSet()
+	for _, item := range items {
+		g.items[item] = struct{}{}
+	}
+	return g
 }
 
 func (g *GSet) Merge(other *GSet) {

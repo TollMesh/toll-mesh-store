@@ -195,8 +195,9 @@ class Client:
             ...     value = fetch_user_data("user-123")
             ...     client.cache_set("users", "user-123", value, ttl=timedelta(hours=1))
         """
-        data = {"namespace": namespace, "key": key}
-        response = self._request("POST", "/cache/get", data)
+        # /cache/get is a GET endpoint taking query params (see
+        # api/http.go handleCacheGet), not a POST with a JSON body.
+        response = self._request("GET", "/cache/get", params={"namespace": namespace, "key": key})
         return response.get("value"), response.get("exists", False)
 
     def cache_set(

@@ -70,7 +70,7 @@ public class TollMeshConfig {
 
 ## Documentation
 
-See https://github.com/toll-mesh/store for complete documentation.
+See https://github.com/TollMesh/toll-mesh-store for complete documentation.
 
 ## License
 

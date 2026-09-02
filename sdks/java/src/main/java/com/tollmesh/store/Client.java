@@ -101,12 +101,15 @@ public class Client implements AutoCloseable {
      * @return CacheValue with value and existence flag
      * @throws TollMeshException if operation fails
      */
+    /**
+     * /cache/get is a GET endpoint taking query params (see
+     * api/http.go handleCacheGet), not a POST with a JSON body.
+     */
     public CacheValue cacheGet(String namespace, String key) throws TollMeshException {
-        Map<String, Object> body = new LinkedHashMap<>();
-        body.put("namespace", namespace);
-        body.put("key", key);
-
-        return post("/cache/get", body, CacheValue.class);
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("namespace", namespace);
+        query.put("key", key);
+        return get("/cache/get", query, CacheValue.class);
     }
 
     /**

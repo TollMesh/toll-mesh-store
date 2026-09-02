@@ -199,11 +199,10 @@ export class Client {
    * }
    */
   async cacheGet(namespace: string, key: string): Promise<CacheValue> {
+    // /cache/get is a GET endpoint taking query params (see
+    // api/http.go handleCacheGet), not a POST with a JSON body.
     try {
-      const response = await this.axiosInstance.post('/cache/get', {
-        namespace,
-        key,
-      });
+      const response = await this.axiosInstance.get('/cache/get', { params: { namespace, key } });
 
       if (response.status >= 400) {
         throw this.handleErrorResponse(response.data, response.status);

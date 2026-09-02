@@ -13,21 +13,25 @@ gem install tollmeshcache
 ```ruby
 require 'tollmeshcache'
 
-# Create a cache client
-cache = TollMeshCache::Client.new('localhost:8080')
+config = TollMeshCache::ClientConfig.new(host: 'localhost', port: 8080)
+client = TollMeshCache::Client.new(config)
 
-# Job Queues
-cache.enqueue('tasks', 'my-job', priority: 5)
-job = cache.claim('tasks')
-cache.complete('tasks', job.id)
+# Job Queues - distributed task processing
+job = client.enqueue('tasks', 'my-job', priority: 5)
+claimed = client.claim('tasks', 'worker-1')
+client.complete('tasks', claimed['id'])
 
-# Sorted Sets (Leaderboards)
-cache.zadd('scores', 100, 'player-1')
-cache.zrange('scores', 0, -1)
+# Sorted Sets - O(log n) leaderboards
+client.zadd('scores', 100, 'player-1')
+client.zadd('scores', 150, 'player-2')
+top_scores = client.zrevrange('scores', limit: 10) # highest first
 
-# Streams (Event Logs)
-cache.xadd('events', { 'event' => 'login', 'user' => 'alice' })
-cache.xrange('events', '-', '+')
+# Streams - append-only event logs
+entry = client.xadd('events', { 'event' => 'login', 'user' => 'alice' })
+client.xgroup_create('events', 'analytics')
+client.xreadgroup('analytics', 'worker-1', 'events').each do |e|
+  client.xack('events', 'analytics', 'worker-1', e['id'])
+end
 ```
 
 ## Features
@@ -36,11 +40,10 @@ cache.xrange('events', '-', '+')
 - **Sorted Sets**: O(log n) leaderboards and rankings
 - **Streams**: Append-only event logs with consumer groups
 - **CRDT-based**: Eventual consistency without central coordinator
-- **Async/Await**: Full async support with Fiber
 
 ## Documentation
 
-See https://github.com/toll-mesh/store for complete documentation.
+See https://github.com/TollMesh/toll-mesh-store for complete documentation.
 
 ## License
 

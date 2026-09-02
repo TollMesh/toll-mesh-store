@@ -11,24 +11,25 @@ pip install tollmeshcache
 ## Quick Start
 
 ```python
-from tollmeshcache import Client
+from tollmeshcache import Client, ClientConfig
 
-# Create a client
-client = Client('localhost:8080')
+client = Client(ClientConfig(host='localhost', port=8080))
 
-# Job Queues - Distributed task processing
-client.enqueue('tasks', 'my-job', priority=5)
-job = client.claim('tasks')
-client.complete('tasks', job.id)
+# Job Queues - distributed task processing
+job = client.enqueue('tasks', 'my-job', priority=5)
+claimed = client.claim('tasks', 'worker-1')
+client.complete('tasks', claimed['id'])
 
 # Sorted Sets - O(log n) leaderboards
 client.zadd('scores', 100, 'player-1')
 client.zadd('scores', 150, 'player-2')
-scores = client.zrange('scores', 0, -1)
+top_scores = client.zrevrange('scores', limit=10)  # highest first
 
-# Streams - Append-only event logs
-client.xadd('events', {'event': 'login', 'user': 'alice'})
-events = client.xrange('events', '-', '+')
+# Streams - append-only event logs
+entry = client.xadd('events', {'event': 'login', 'user': 'alice'})
+client.xgroup_create('events', 'analytics')
+for e in client.xreadgroup('analytics', 'worker-1', 'events'):
+    client.xack('events', 'analytics', 'worker-1', e['id'])
 ```
 
 ## Features
@@ -42,7 +43,7 @@ events = client.xrange('events', '-', '+')
 
 ## Documentation
 
-See https://github.com/toll-mesh/store for complete documentation.
+See https://github.com/TollMesh/toll-mesh-store for complete documentation.
 
 ## License
 

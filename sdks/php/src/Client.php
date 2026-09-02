@@ -53,8 +53,9 @@ class Client
 
     public function cacheGet(string $namespace, string $key): array
     {
-        $body = ['namespace' => $namespace, 'key' => $key];
-        return $this->post('/cache/get', $body);
+        // /cache/get is a GET endpoint taking query params (see
+        // api/http.go handleCacheGet), not a POST with a JSON body.
+        return $this->get('/cache/get', ['namespace' => $namespace, 'key' => $key]);
     }
 
     public function cacheSet(string $namespace, string $key, string $value, ?int $ttl_ms = null): void

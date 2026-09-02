@@ -46,8 +46,9 @@ module TollMeshCache
     end
 
     def cache_get(namespace, key)
-      body = { namespace: namespace, key: key }
-      post('/cache/get', body)
+      # /cache/get is a GET endpoint taking query params (see
+      # api/http.go handleCacheGet), not a POST with a JSON body.
+      get('/cache/get', query: { namespace: namespace, key: key })
     end
 
     def cache_set(namespace, key, value, ttl_ms = nil)

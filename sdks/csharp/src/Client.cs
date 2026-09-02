@@ -209,8 +209,9 @@ namespace TollMesh.Cache
 
         public async Task<CacheValue> CacheGetAsync(string ns, string key)
         {
-            var body = new { @namespace = ns, key };
-            return await PostAsync<CacheValue>("/cache/get", body);
+            // The server's /cache/get is a GET endpoint taking query params
+            // (see api/http.go handleCacheGet), not a POST with a JSON body.
+            return await GetAsync<CacheValue>("/cache/get", new() { ["namespace"] = ns, ["key"] = key });
         }
 
         public async Task CacheSetAsync(string ns, string key, string value, TimeSpan? ttl = null)

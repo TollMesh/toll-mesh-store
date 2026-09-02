@@ -54,17 +54,14 @@ impl Client {
     }
 
     /// Get cached value
+    /// /cache/get is a GET endpoint taking query params (see
+    /// api/http.go handleCacheGet), not a POST with a JSON body.
     pub async fn cache_get(
         &self,
         namespace: &str,
         key: &str,
     ) -> Result<CacheValue, TollMeshError> {
-        let req = CacheGetRequest {
-            namespace: namespace.to_string(),
-            key: key.to_string(),
-        };
-
-        self.post("/cache/get", &req).await
+        self.get_with_query("/cache/get", &[("namespace", namespace), ("key", key)]).await
     }
 
     /// Set cached value

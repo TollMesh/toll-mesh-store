@@ -8,6 +8,8 @@ import (
 
 	"github.com/toll-mesh/store/coordination"
 	"github.com/toll-mesh/store/core"
+	"github.com/toll-mesh/store/ranking"
+	"github.com/toll-mesh/store/scripting"
 	"github.com/toll-mesh/store/store"
 )
 
@@ -181,5 +183,162 @@ func TestHTTP_Stream_EndToEnd(t *testing.T) {
 	status = getJSON(t, hs, "/stream/len?stream=events", &lenResp)
 	if status != 200 || lenResp["length"] != float64(1) {
 		t.Errorf("expected length 1, got status=%d body=%v", status, lenResp)
+	}
+}
+
+func TestHTTP_PubSub_EndToEnd(t *testing.T) {
+	hs := newTestServer(t)
+
+	var subResp map[string]bool
+	status := postJSON(t, hs, "/pubsub/subscribe", SubscribeRequest{SubscriberID: "sub-1", Topic: "news"}, &subResp)
+	if status != 200 || !subResp["ok"] {
+		t.Fatalf("subscribe failed: status=%d body=%v", status, subResp)
+	}
+
+	var pubResp map[string]interface{}
+	status = postJSON(t, hs, "/pubsub/publish", PublishRequest{Topic: "news", Publisher: "pub-1", Payload: "hello"}, &pubResp)
+	if status != 200 || pubResp["delivered_count"] != float64(1) {
+		t.Fatalf("publish failed: status=%d body=%v", status, pubResp)
+	}
+
+	var pollResp map[string]interface{}
+	status = postJSON(t, hs, "/pubsub/poll", PollRequest{SubscriberID: "sub-1", Limit: 10, TimeoutMs: 1000}, &pollResp)
+	if status != 200 {
+		t.Fatalf("poll failed: status=%d", status)
+	}
+	messages, ok := pollResp["messages"].([]interface{})
+	if !ok || len(messages) != 1 {
+		t.Fatalf("expected 1 message, got %v", pollResp)
+	}
+}
+
+func TestHTTP_Transaction_CommitApplies(t *testing.T) {
+	hs := newTestServer(t)
+
+	var beginResp map[string]interface{}
+	status := postJSON(t, hs, "/txn/begin", BeginTxnRequest{TxnID: "txn-1"}, &beginResp)
+	if status != 200 {
+		t.Fatalf("begin failed: status=%d body=%v", status, beginResp)
+	}
+
+	var opResp map[string]bool
+	status = postJSON(t, hs, "/txn/operation", TxnOperationRequest{
+		TxnID: "txn-1", Type: "set", Namespace: "ns", Key: "k", Value: "v",
+	}, &opResp)
+	if status != 200 || !opResp["ok"] {
+		t.Fatalf("add operation failed: status=%d body=%v", status, opResp)
+	}
+
+	var commitResp map[string]bool
+	status = postJSON(t, hs, "/txn/commit", BeginTxnRequest{TxnID: "txn-1"}, &commitResp)
+	if status != 200 || !commitResp["ok"] {
+		t.Fatalf("commit failed: status=%d body=%v", status, commitResp)
+	}
+
+	var cacheResp map[string]interface{}
+	status = getJSON(t, hs, "/cache/get?namespace=ns&key=k", &cacheResp)
+	if status != 200 || cacheResp["exists"] != true || cacheResp["value"] != "v" {
+		t.Fatalf("expected committed value visible, got status=%d body=%v", status, cacheResp)
+	}
+}
+
+func TestHTTP_Persistence_SnapshotAndRestore(t *testing.T) {
+	hs := newTestServer(t)
+
+	var setResp map[string]bool
+	postJSON(t, hs, "/cache/set", CacheRequest{Namespace: "ns", Key: "k", Value: "v"}, &setResp)
+
+	var snapResp map[string]bool
+	status := postJSON(t, hs, "/persistence/snapshot", nil, &snapResp)
+	if status != 200 || !snapResp["ok"] {
+		t.Fatalf("create snapshot failed: status=%d body=%v", status, snapResp)
+	}
+
+	var latestResp map[string]interface{}
+	status = getJSON(t, hs, "/persistence/snapshot/latest", &latestResp)
+	if status != 200 {
+		t.Fatalf("get latest snapshot failed: status=%d", status)
+	}
+}
+
+func TestHTTP_Pipeline_InlineExecution(t *testing.T) {
+	hs := newTestServer(t)
+
+	var result map[string]interface{}
+	status := postJSON(t, hs, "/pipeline/execute-inline", ExecuteInlinePipelineRequest{
+		Steps: []scripting.Step{
+			{Op: "set", Args: map[string]interface{}{"namespace": "ns", "key": "k", "value": "hi"}},
+		},
+	}, &result)
+	if status != 200 {
+		t.Fatalf("pipeline execution failed: status=%d body=%v", status, result)
+	}
+
+	var cacheResp map[string]interface{}
+	status = getJSON(t, hs, "/cache/get?namespace=ns&key=k", &cacheResp)
+	if status != 200 || cacheResp["value"] != "hi" {
+		t.Fatalf("expected pipeline set to be visible, got %v", cacheResp)
+	}
+}
+
+func TestHTTP_Search_EndToEnd(t *testing.T) {
+	hs := newTestServer(t)
+
+	var indexResp map[string]bool
+	status := postJSON(t, hs, "/search/index", IndexDocumentRequest{ID: "1", Content: "distributed systems"}, &indexResp)
+	if status != 200 || !indexResp["ok"] {
+		t.Fatalf("index failed: status=%d body=%v", status, indexResp)
+	}
+
+	var searchResp map[string]interface{}
+	status = getJSON(t, hs, "/search/bm25?query=distributed&topk=10", &searchResp)
+	if status != 200 {
+		t.Fatalf("search failed: status=%d", status)
+	}
+	results, ok := searchResp["results"].([]interface{})
+	if !ok || len(results) != 1 {
+		t.Fatalf("expected 1 result, got %v", searchResp)
+	}
+}
+
+func TestHTTP_Rank(t *testing.T) {
+	hs := newTestServer(t)
+
+	var result map[string]interface{}
+	status := postJSON(t, hs, "/rank", RankRequest{
+		Items:    []ranking.RankedItem{{ID: "a", Score: 1}, {ID: "b", Score: 3}},
+		Strategy: "bm25",
+	}, &result)
+	if status != 200 {
+		t.Fatalf("rank failed: status=%d body=%v", status, result)
+	}
+	items, ok := result["items"].([]interface{})
+	if !ok || len(items) != 2 {
+		t.Fatalf("expected 2 ranked items, got %v", result)
+	}
+	first := items[0].(map[string]interface{})
+	if first["ID"] != "b" {
+		t.Errorf("expected 'b' to rank first, got %v", first["ID"])
+	}
+}
+
+func TestHTTP_Metrics(t *testing.T) {
+	hs := newTestServer(t)
+	postJSON(t, hs, "/consume", ConsumeRequest{Key: "k", Limit: 10, Window: 60000}, nil)
+
+	var metricsResp map[string]interface{}
+	status := getJSON(t, hs, "/metrics", &metricsResp)
+	if status != 200 {
+		t.Fatalf("metrics failed: status=%d", status)
+	}
+	if metricsResp["consume_total"] != float64(1) {
+		t.Errorf("expected 1 consume recorded, got %v", metricsResp["consume_total"])
+	}
+
+	req := httptest.NewRequest("GET", "/metrics/prometheus", nil)
+	rec := httptest.NewRecorder()
+	hs.mux.ServeHTTP(rec, req)
+	if rec.Code != 200 || rec.Body.Len() == 0 {
+		t.Errorf("expected non-empty prometheus output, got status=%d len=%d", rec.Code, rec.Body.Len())
 	}
 }

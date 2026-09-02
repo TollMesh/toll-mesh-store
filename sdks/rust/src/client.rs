@@ -363,6 +363,270 @@ impl Client {
             .map_err(|e| TollMeshError::new(ErrorCode::Internal, format!("Failed to parse response: {}", e)))
     }
 
+    // ===== Pub/Sub =====
+
+    /// Subscribe to a topic with optional regex pattern matching
+    pub async fn subscribe(&self, subscriber_id: &str, topic: &str, pattern: &str) -> Result<(), TollMeshError> {
+        let req = SubscribeRequest { subscriber_id: subscriber_id.to_string(), topic: topic.to_string(), pattern: pattern.to_string() };
+        let _: serde_json::Value = self.post("/pubsub/subscribe", &req).await?;
+        Ok(())
+    }
+
+    /// Remove a subscription
+    pub async fn unsubscribe(&self, subscriber_id: &str, topic: &str) -> Result<(), TollMeshError> {
+        let req = UnsubscribeRequest { subscriber_id: subscriber_id.to_string(), topic: topic.to_string() };
+        let _: serde_json::Value = self.post("/pubsub/unsubscribe", &req).await?;
+        Ok(())
+    }
+
+    /// Publish a message to a topic; returns the number of subscribers it was delivered to
+    pub async fn publish(&self, topic: &str, publisher: &str, payload: &str) -> Result<i64, TollMeshError> {
+        let req = PublishRequest { topic: topic.to_string(), publisher: publisher.to_string(), payload: payload.to_string() };
+        let response: PublishResponse = self.post("/pubsub/publish", &req).await?;
+        Ok(response.delivered_count)
+    }
+
+    /// Retrieve up to limit currently-available messages for a subscriber,
+    /// waiting up to timeout_ms if none are immediately available.
+    pub async fn poll(&self, subscriber_id: &str, limit: i64, timeout_ms: i64) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let req = PollRequest { subscriber_id: subscriber_id.to_string(), limit, timeout_ms };
+        let response: PollResponse = self.post("/pubsub/poll", &req).await?;
+        Ok(response.messages)
+    }
+
+    /// Get all known pub/sub topics
+    pub async fn get_topics(&self) -> Result<Vec<String>, TollMeshError> {
+        let response: TopicsResponse = self.get("/pubsub/topics").await?;
+        Ok(response.topics)
+    }
+
+    /// Get subscriber IDs for a topic
+    pub async fn get_topic_subscribers(&self, topic: &str) -> Result<Vec<String>, TollMeshError> {
+        let response: SubscribersResponse = self.get_with_query("/pubsub/subscribers", &[("topic", topic)]).await?;
+        Ok(response.subscribers)
+    }
+
+    /// Get pub/sub statistics
+    pub async fn pubsub_stats(&self) -> Result<serde_json::Value, TollMeshError> {
+        self.get("/pubsub/stats").await
+    }
+
+    // ===== Transactions =====
+
+    /// Start a new transaction
+    pub async fn begin_transaction(&self, txn_id: &str) -> Result<serde_json::Value, TollMeshError> {
+        let req = TxnIdRequest { txn_id: txn_id.to_string() };
+        self.post("/txn/begin", &req).await
+    }
+
+    /// Queue an operation within a pending transaction. Only "set" operations are applied on commit.
+    pub async fn add_transaction_operation(&self, txn_id: &str, op_type: &str, namespace: &str, key: &str, value: &str) -> Result<(), TollMeshError> {
+        let req = TxnOperationRequest {
+            txn_id: txn_id.to_string(),
+            op_type: op_type.to_string(),
+            namespace: namespace.to_string(),
+            key: key.to_string(),
+            value: value.to_string(),
+        };
+        let _: serde_json::Value = self.post("/txn/operation", &req).await?;
+        Ok(())
+    }
+
+    /// Commit a transaction, applying all of its queued "set" operations to the real cache atomically
+    pub async fn commit_transaction(&self, txn_id: &str) -> Result<(), TollMeshError> {
+        let req = TxnIdRequest { txn_id: txn_id.to_string() };
+        let _: serde_json::Value = self.post("/txn/commit", &req).await?;
+        Ok(())
+    }
+
+    /// Roll back a pending transaction, discarding its queued operations
+    pub async fn rollback_transaction(&self, txn_id: &str) -> Result<(), TollMeshError> {
+        let req = TxnIdRequest { txn_id: txn_id.to_string() };
+        let _: serde_json::Value = self.post("/txn/rollback", &req).await?;
+        Ok(())
+    }
+
+    /// Get the status of a transaction: pending, committed, rolled_back, or failed
+    pub async fn transaction_status(&self, txn_id: &str) -> Result<String, TollMeshError> {
+        let response: TxnStatusResponse = self.get_with_query("/txn/status", &[("txn_id", txn_id)]).await?;
+        Ok(response.status)
+    }
+
+    // ===== Persistence =====
+
+    /// Capture the current live store state to disk
+    pub async fn create_snapshot(&self) -> Result<(), TollMeshError> {
+        let _: serde_json::Value = self.post("/persistence/snapshot", &serde_json::json!({})).await?;
+        Ok(())
+    }
+
+    /// Get the most recent snapshot
+    pub async fn get_latest_snapshot(&self) -> Result<serde_json::Value, TollMeshError> {
+        self.get("/persistence/snapshot/latest").await
+    }
+
+    /// Load the most recent snapshot and apply it to live store state
+    pub async fn restore_from_latest_snapshot(&self) -> Result<(), TollMeshError> {
+        let _: serde_json::Value = self.post("/persistence/restore", &serde_json::json!({})).await?;
+        Ok(())
+    }
+
+    /// Get persistence statistics
+    pub async fn persistence_stats(&self) -> Result<serde_json::Value, TollMeshError> {
+        self.get("/persistence/stats").await
+    }
+
+    // ===== Scripting: Pipelines (safe operation composition) =====
+
+    /// Register a named pipeline: an ordered list of steps, each naming an
+    /// existing store operation (e.g. "zadd", "get", "set") plus its
+    /// arguments. A step can save its result under a name for later steps
+    /// to reference via "$name".
+    pub async fn register_pipeline(&self, name: &str, steps: Vec<serde_json::Value>) -> Result<(), TollMeshError> {
+        let req = RegisterPipelineRequest { name: name.to_string(), steps };
+        let _: serde_json::Value = self.post("/pipeline/register", &req).await?;
+        Ok(())
+    }
+
+    /// Run a registered pipeline by name
+    pub async fn execute_pipeline(&self, name: &str) -> Result<serde_json::Value, TollMeshError> {
+        let req = NameRequest { name: name.to_string() };
+        self.post("/pipeline/execute", &req).await
+    }
+
+    /// Run an ad-hoc list of steps without registering them
+    pub async fn execute_inline_pipeline(&self, steps: Vec<serde_json::Value>) -> Result<serde_json::Value, TollMeshError> {
+        let req = ExecuteInlinePipelineRequest { steps };
+        self.post("/pipeline/execute-inline", &req).await
+    }
+
+    /// Retrieve a registered pipeline by name
+    pub async fn get_pipeline(&self, name: &str) -> Result<serde_json::Value, TollMeshError> {
+        self.get_with_query("/pipeline/get", &[("name", name)]).await
+    }
+
+    /// List all registered pipelines
+    pub async fn list_pipelines(&self) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let response: PipelinesResponse = self.get("/pipeline/list").await?;
+        Ok(response.pipelines)
+    }
+
+    /// Remove a registered pipeline
+    pub async fn delete_pipeline(&self, name: &str) -> Result<(), TollMeshError> {
+        let req = NameRequest { name: name.to_string() };
+        let _: serde_json::Value = self.post("/pipeline/delete", &req).await?;
+        Ok(())
+    }
+
+    // ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+    /// Compile Go source to a sandboxed WASM module via TinyGo and register
+    /// it under name. This is slow (real seconds) and expected to happen
+    /// far less often than execute_script.
+    pub async fn compile_script(&self, name: &str, source: &str) -> Result<serde_json::Value, TollMeshError> {
+        let req = CompileScriptRequest { name: name.to_string(), source: source.to_string() };
+        self.post("/script/compile", &req).await
+    }
+
+    /// Run a previously compiled script by name, feeding input on stdin
+    pub async fn execute_script(&self, name: &str, input: &str) -> Result<String, TollMeshError> {
+        let req = ExecuteScriptRequest { name: name.to_string(), input: input.to_string() };
+        let response: ScriptOutputResponse = self.post("/script/execute", &req).await?;
+        Ok(response.output)
+    }
+
+    /// Compile and immediately run Go source without registering it
+    pub async fn execute_inline_script(&self, source: &str, input: &str) -> Result<String, TollMeshError> {
+        let req = ExecuteInlineScriptRequest { source: source.to_string(), input: input.to_string() };
+        let response: ScriptOutputResponse = self.post("/script/execute-inline", &req).await?;
+        Ok(response.output)
+    }
+
+    /// Retrieve a registered script by name
+    pub async fn get_script(&self, name: &str) -> Result<serde_json::Value, TollMeshError> {
+        self.get_with_query("/script/get", &[("name", name)]).await
+    }
+
+    /// List all registered scripts
+    pub async fn list_scripts(&self) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let response: ScriptsResponse = self.get("/script/list").await?;
+        Ok(response.scripts)
+    }
+
+    /// Remove a registered script
+    pub async fn delete_script(&self, name: &str) -> Result<(), TollMeshError> {
+        let req = NameRequest { name: name.to_string() };
+        let _: serde_json::Value = self.post("/script/delete", &req).await?;
+        Ok(())
+    }
+
+    // ===== Search =====
+
+    /// Add a document to the search index
+    pub async fn index_document(&self, id: &str, content: &str, metadata: Option<serde_json::Value>, vector: Option<Vec<f32>>) -> Result<(), TollMeshError> {
+        let req = IndexDocumentRequest { id: id.to_string(), content: content.to_string(), metadata, vector };
+        let _: serde_json::Value = self.post("/search/index", &req).await?;
+        Ok(())
+    }
+
+    /// Perform BM25 full-text search
+    pub async fn search_bm25(&self, query: &str, top_k: i64) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let response: SearchResultsResponse = self.get_with_query("/search/bm25", &[("query", query.to_string()), ("topk", top_k.to_string())]).await?;
+        Ok(response.results)
+    }
+
+    /// Perform vector similarity search
+    pub async fn search_vector(&self, vector: Vec<f32>, top_k: i64) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let req = SearchVectorRequest { vector, topk: top_k };
+        let response: SearchResultsResponse = self.post("/search/vector", &req).await?;
+        Ok(response.results)
+    }
+
+    /// Perform hybrid BM25 + vector search
+    pub async fn search_hybrid(&self, query: &str, vector: Vec<f32>, top_k: i64) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let req = SearchHybridRequest { query: query.to_string(), vector, topk: top_k };
+        let response: SearchResultsResponse = self.post("/search/hybrid", &req).await?;
+        Ok(response.results)
+    }
+
+    /// Remove a document from the search index
+    pub async fn delete_search_document(&self, id: &str) -> Result<(), TollMeshError> {
+        let req = DeleteDocumentRequest { id: id.to_string() };
+        let _: serde_json::Value = self.post("/search/delete", &req).await?;
+        Ok(())
+    }
+
+    // ===== Ranking =====
+
+    /// Re-rank a list of already-scored items using the named strategy
+    /// ("bm25", "vector", "llm", or "context"). boosts (for "context") is
+    /// a per-ID score multiplier map.
+    pub async fn rank(&self, items: Vec<serde_json::Value>, strategy: &str, boosts: Option<std::collections::HashMap<String, f32>>) -> Result<Vec<serde_json::Value>, TollMeshError> {
+        let req = RankRequest { items, strategy: strategy.to_string(), boosts };
+        let response: RankResponse = self.post("/rank", &req).await?;
+        Ok(response.items)
+    }
+
+    // ===== Metrics =====
+
+    /// Get current operational metrics
+    pub async fn get_metrics(&self) -> Result<serde_json::Value, TollMeshError> {
+        self.get("/metrics").await
+    }
+
+    /// Get metrics formatted for Prometheus scraping
+    pub async fn get_prometheus_metrics(&self) -> Result<String, TollMeshError> {
+        let url = format!("{}/metrics/prometheus", self.config.base_url());
+        let response = self.http_client
+            .get(&url)
+            .send()
+            .await
+            .map_err(|e| TollMeshError::new(ErrorCode::Unavailable, format!("Request failed: {}", e)))?;
+        response.text()
+            .await
+            .map_err(|e| TollMeshError::new(ErrorCode::Internal, format!("Failed to read response: {}", e)))
+    }
+
     async fn get_with_query<Res: serde::de::DeserializeOwned, Q: serde::Serialize>(
         &self,
         endpoint: &str,

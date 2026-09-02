@@ -216,3 +216,185 @@ pub struct XAckRequest {
     pub consumer: String,
     pub id: String,
 }
+
+// ===== Pub/Sub =====
+
+#[derive(Debug, Serialize)]
+pub struct SubscribeRequest {
+    pub subscriber_id: String,
+    pub topic: String,
+    pub pattern: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UnsubscribeRequest {
+    pub subscriber_id: String,
+    pub topic: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PublishRequest {
+    pub topic: String,
+    pub publisher: String,
+    pub payload: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PublishResponse {
+    pub delivered_count: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct PollRequest {
+    pub subscriber_id: String,
+    pub limit: i64,
+    pub timeout_ms: i64,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PollResponse {
+    #[serde(default)]
+    pub messages: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TopicsResponse {
+    #[serde(default)]
+    pub topics: Vec<String>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SubscribersResponse {
+    #[serde(default)]
+    pub subscribers: Vec<String>,
+}
+
+// ===== Transactions =====
+
+#[derive(Debug, Serialize)]
+pub struct TxnIdRequest {
+    pub txn_id: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct TxnOperationRequest {
+    pub txn_id: String,
+    #[serde(rename = "type")]
+    pub op_type: String,
+    pub namespace: String,
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TxnStatusResponse {
+    pub status: String,
+}
+
+// ===== Scripting: Pipelines =====
+
+#[derive(Debug, Serialize)]
+pub struct RegisterPipelineRequest {
+    pub name: String,
+    pub steps: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct NameRequest {
+    pub name: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecuteInlinePipelineRequest {
+    pub steps: Vec<serde_json::Value>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct PipelinesResponse {
+    #[serde(default)]
+    pub pipelines: Vec<serde_json::Value>,
+}
+
+// ===== Scripting: WASM =====
+
+#[derive(Debug, Serialize)]
+pub struct CompileScriptRequest {
+    pub name: String,
+    pub source: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecuteScriptRequest {
+    pub name: String,
+    pub input: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ExecuteInlineScriptRequest {
+    pub source: String,
+    pub input: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScriptOutputResponse {
+    #[serde(default)]
+    pub output: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct ScriptsResponse {
+    #[serde(default)]
+    pub scripts: Vec<serde_json::Value>,
+}
+
+// ===== Search =====
+
+#[derive(Debug, Serialize)]
+pub struct IndexDocumentRequest {
+    pub id: String,
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub metadata: Option<serde_json::Value>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub vector: Option<Vec<f32>>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchVectorRequest {
+    pub vector: Vec<f32>,
+    pub topk: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct SearchHybridRequest {
+    pub query: String,
+    pub vector: Vec<f32>,
+    pub topk: i64,
+}
+
+#[derive(Debug, Serialize)]
+pub struct DeleteDocumentRequest {
+    pub id: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct SearchResultsResponse {
+    #[serde(default)]
+    pub results: Vec<serde_json::Value>,
+}
+
+// ===== Ranking =====
+
+#[derive(Debug, Serialize)]
+pub struct RankRequest {
+    pub items: Vec<serde_json::Value>,
+    pub strategy: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub boosts: Option<std::collections::HashMap<String, f32>>,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct RankResponse {
+    #[serde(default)]
+    pub items: Vec<serde_json::Value>,
+}

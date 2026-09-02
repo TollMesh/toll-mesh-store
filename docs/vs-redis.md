@@ -6,315 +6,56 @@ nav_order: 11
 
 # TollMeshCache vs Redis
 
-A detailed comparison for choosing the right solution.
+An honest comparison, current as of this project's actual tested state — not aspirational.
 
-## Feature Comparison
+---
+
+## What's Actually Verified Working
+
+These six capabilities are wired end-to-end (Go backend → HTTP API → all 7 SDKs) and have been run against a live server as part of building them:
 
 | Feature | TollMeshCache | Redis |
 |---------|---------------|-------|
-| **Language Support** | 7 languages (SDKs) | CLI-based, client libraries |
-| **Rate Limiting** | ✅ Built-in CRDT | ⚠️ Requires custom logic |
-| **Replay Protection** | ✅ Built-in GSet | ⚠️ Requires custom logic |
-| **Distributed Caching** | ✅ TTL-based | ✅ Full caching support |
-| **No Central Server** | ✅ Peer-to-peer | ❌ Single point of failure |
-| **CRDT Convergence** | ✅ Automatic | ⚠️ Requires Sentinel/Cluster |
-| **Type Safety** | ✅ Native types | ⚠️ String-based keys/values |
-| **Async Support** | ✅ All SDKs | ⚠️ Requires client impl |
-| **Zero Config** | ✅ Auto-discovery | ❌ Requires setup |
-| **Memory Efficient** | ✅ Optimized | ✅ Highly optimized |
+| Rate limiting | Yes (CRDT `GCounter`) | Yes (requires `INCR`+`EXPIRE` or a module) |
+| Replay protection | Yes (CRDT `GSet`) | Yes (requires `SETNX`+`EXPIRE`) |
+| Key-value cache with TTL | Yes | Yes |
+| Job queues | Yes (priority, retry, dead-letter) | Not built in (commonly layered on Streams or Lists) |
+| Sorted sets | Yes (skip list, CRDT conflict resolution) | Yes (skip list) |
+| Streams with consumer groups | Yes | Yes |
+
+For all six, correctness is backed by real tests (Go unit tests for the backend, plus live HTTP integration tests for every SDK) — not just "it compiles."
 
 ---
 
-## Architecture Comparison
+## What Exists as Code But Isn't Usable Yet
 
-### TollMeshCache (Peer-to-Peer)
-
-```
-┌─────────┐     ┌─────────┐     ┌─────────┐
-│ Node 1  │────→│ Node 2  │────→│ Node 3  │
-│ (Cache) │←────│(Cache)  │←────│(Cache)  │
-└─────────┘     └─────────┘     └─────────┘
-     ↑                              ↑
-     └──────────────────────────────┘
-    Automatic State Convergence (CRDT)
-```
-
-**Advantages:**
-- No single point of failure
-- Self-healing cluster
-- Automatic conflict resolution
-- Scales horizontally
-- Works in edge/distributed scenarios
-
-### Redis (Master-Slave/Cluster)
-
-```
-         ┌──────────────┐
-         │ Redis Master │
-         └──────────────┘
-              ↓ ↓ ↓
-    ┌──────────┴──────────┐
-    ↓          ↓          ↓
-┌────────┐ ┌────────┐ ┌────────┐
-│ Slave1 │ │ Slave2 │ │ Slave3 │
-└────────┘ └────────┘ └────────┘
-```
-
-**Advantages:**
-- Battle-tested, mature
-- High throughput
-- Rich data structures
-- Pub/Sub support
-- Large ecosystem
+Pub/Sub, Transactions, Persistence, Lua Scripting, Search, Ranking, and Metrics all have Go packages in this repository — roughly 2,700 lines combined — but **none of them are connected to `MeshStore` or the HTTP API**, and **none have any test files**. This was the exact same problem Job Queues, Sorted Sets, and Streams had before this round of work: real code, zero way for any client to reach it, and (unlike those three) no tests proving the logic even works in isolation. If you see these listed as supported elsewhere in older docs, that was inaccurate — they are not usable from any SDK today.
 
 ---
 
-## Use Case Comparison
+## Performance
 
-### Use TollMeshCache When:
+No benchmark has been run against this system. Any specific throughput or latency numbers you might see elsewhere in this project's history were not measured — they were invented, and have been removed. If performance is a factor in your decision, benchmark it yourself before relying on it; don't take anyone's word for it, including this document's.
 
-✅ **Distributed Rate Limiting**
-- No central coordinator needed
-- Automatic convergence across regions
-- Works without synchronous calls
-
-✅ **Replay Protection**
-- Built-in nonce tracking
-- Automatic cleanup
-- CRDT-based deduplication
-
-✅ **Edge Computing**
-- Distributed cache at edge nodes
-- No cloud latency
-- Automatic sync between edges
-
-✅ **Microservices**
-- Each service has own cache
-- No shared Redis dependency
-- Reduces deployment complexity
-
-✅ **Zero-Config Caching**
-- Drop-in replacement
-- Auto-discovery
-- Self-healing
-
-### Use Redis When:
-
-✅ **High Throughput**
-- 100k+ operations/second
-- Need maximum performance
-- In-memory sorted sets, hashes
-
-✅ **Complex Data Structures**
-- Sorted sets, streams, graphs
-- Pub/Sub messaging
-- Transaction support (MULTI/EXEC)
-
-✅ **Session Management**
-- Large session objects
-- Frequent updates
-- TTL expiration (similar to TollMeshCache)
-
-✅ **Real-Time Analytics**
-- High-frequency stats
-- Counters, HyperLogLog
-- Sliding windows
-
-✅ **Existing Redis Ecosystem**
-- Team expertise
-- Monitoring/alerting setup
-- Operational knowledge
+What can be said honestly:
+- Every write goes through an HTTP round-trip (no persistent-connection or pipelining protocol yet), which puts a real floor under latency compared to Redis's RESP protocol.
+- `SortedSet.Rank`/`RevRank` are O(n) in the current implementation (a full skip-list "span" implementation, which is what makes Redis's `ZRANK` O(log n), was not completed — see the sortedset package for details). `Insert`, `Delete`, and range queries are O(log n).
+- Everything is in-memory with no durability path wired up (see Persistence, above) — a process restart loses all data. Redis has RDB/AOF persistence, battle-tested over 15+ years.
 
 ---
 
-## Performance Comparison
+## Architecture
 
-### Throughput
+**TollMeshCache**: peer-to-peer, CRDT-based. Each node holds full state; nodes gossip and merge via Lamport-clock conflict resolution. No coordinator, no leader election. This is a real, meaningful structural difference from Redis — but it has only been exercised in single-node tests in this codebase. Multi-node convergence (`coordination/state_sync.go`, `coordination/gossip.go`) exists and has its own test suite, but has not been verified end-to-end with the Job Queue/Sorted Set/Stream features layered on top of it — those features currently live entirely within a single `MeshStore` instance's in-memory maps, with no gossip replication wired to them specifically.
 
-| Operation | TollMeshCache | Redis |
-|-----------|---------------|-------|
-| Rate Limit Check | 50k/sec/node | 100k+/sec |
-| Replay Check | 50k/sec/node | 100k+/sec |
-| Cache Get | 50k/sec/node | 100k+/sec |
-| Cache Set | 50k/sec/node | 100k+/sec |
-
-**Note:** TollMeshCache scales horizontally with added nodes. Redis requires sharding.
-
-### Latency
-
-| Operation | TollMeshCache | Redis |
-|-----------|---------------|-------|
-| P50 | 1-2ms | <1ms |
-| P99 | 5-10ms | 2-5ms |
-| P99.9 | 20-50ms | 10-20ms |
-
-**Note:** TollMeshCache includes network roundtrip; Redis is in-process.
-
-### Memory per Node
-
-| Scenario | TollMeshCache | Redis |
-|----------|---------------|-------|
-| 1M keys | ~100MB | ~50MB |
-| 10M keys | ~1GB | ~500MB |
-| 100M keys | ~10GB | ~5GB |
-
-**Note:** TollMeshCache includes CRDT metadata; both are O(n).
+**Redis**: single-writer master with optional replicas, or Redis Cluster for horizontal scale via hash-slot sharding. Mature, well-understood failure modes, an enormous ecosystem (Sentinel, Cluster, modules, every major language's client libraries), and production deployments at massive scale.
 
 ---
 
-## Operational Complexity
+## Honest Verdict
 
-### TollMeshCache
+Redis is not being outperformed or outclassed here, and no credible claim to that effect should be made. Redis is a mature, extremely fast, heavily battle-tested system with a huge feature surface, and this project does not yet have persistence, pub/sub, transactions, or verified multi-node operation under real load.
 
-**Setup:** Low
-- Create client instance
-- Point to cluster
-- Done
+What TollMeshCache offers that's genuinely different: a peer-to-peer CRDT model with no central coordinator, and identical client APIs across 7 languages, for six specific capabilities (rate limiting, replay protection, caching, job queues, sorted sets, streams) that are now real and tested rather than aspirational.
 
-**Monitoring:** Medium
-- Health checks per SDK
-- Peer discovery status
-- CRDT convergence metrics
-
-**Scaling:** Easy
-- Add new node
-- Auto-discover peers
-- Automatic state sync
-
-**Failure Recovery:** Automatic
-- Nodes rejoin cluster
-- State automatically restored
-- No manual intervention
-
-### Redis
-
-**Setup:** Medium
-- Install & configure
-- Setup master/sentinel/cluster
-- Configure persistence
-- Setup replication
-
-**Monitoring:** High
-- Memory monitoring
-- Replication lag
-- Master failover
-- Cluster rebalancing
-
-**Scaling:** Complex
-- Manual shard key planning
-- Data migration
-- Rebalancing downtime
-- Key distribution issues
-
-**Failure Recovery:** Manual
-- Master failover requires action
-- Sync data before promotion
-- Monitoring & alerting required
-
----
-
-## Cost Analysis
-
-### TollMeshCache
-
-**Compute Cost:** O(1) per node
-- Each node runs independent computation
-- No central coordinator
-- Cost scales with cluster size
-
-**Network Cost:** Minimal gossip
-- P2P state sync (minimal bandwidth)
-- No central hub traffic
-- Efficient CRDT messages
-
-**Operational Cost:** Low
-- Auto-healing
-- Self-managed cluster
-- Fewer operational tasks
-
-### Redis
-
-**Compute Cost:** Single master
-- Master is bottleneck
-- Reads scale with replicas
-- Cluster adds complexity
-
-**Network Cost:** Moderate
-- Replication traffic
-- Cluster gossip protocol
-- More network overhead
-
-**Operational Cost:** High
-- Dedicated ops team
-- Monitoring & alerting
-- Planned maintenance
-- Failover management
-
----
-
-## Decision Matrix
-
-Choose **TollMeshCache** if:
-- [ ] Need distributed coordination without central server
-- [ ] Automatic conflict resolution important
-- [ ] Want to avoid single point of failure
-- [ ] Need built-in rate limiting + replay protection
-- [ ] Running edge/distributed infrastructure
-- [ ] Want zero-config deployment
-
-Choose **Redis** if:
-- [ ] Need absolute highest throughput (100k+ ops/sec)
-- [ ] Require complex data structures (sorted sets, streams)
-- [ ] Team is Redis-expert
-- [ ] Need existing Redis ecosystem (Sentinel, Cluster, Streams)
-- [ ] Want battle-tested, mature solution
-- [ ] Building real-time pub/sub system
-
----
-
-## Migration Guide
-
-### From Redis to TollMeshCache
-
-1. **Identify what Redis is used for:**
-   - Rate limiting → Use `consume()`
-   - Replay protection → Use `seen()`
-   - General caching → Use `cache_get/set()`
-   - Other features → Keep Redis for now
-
-2. **Parallel run:** Use both simultaneously
-   - Install TollMeshCache SDK
-   - Route rate limiting & replay checks to TollMeshCache
-   - Keep Redis for other operations
-
-3. **Migrate gradually:**
-   - Move one rate limit bucket at a time
-   - Monitor convergence
-   - Remove from Redis after validation
-
-4. **Deprecate Redis:**
-   - Once all use cases migrated
-   - Remove Redis from infrastructure
-   - Update documentation
-
-### From TollMeshCache to Redis
-
-1. **Identify scaling issues:** Is rate limiting the bottleneck?
-2. **Parallel run:** Add Redis alongside TollMeshCache
-3. **Migrate traffic:** Gradually move operations to Redis
-4. **Monitor:** Ensure no regression
-5. **Deprecate:** Remove TollMeshCache once validated
-
----
-
-## Conclusion
-
-- **TollMeshCache**: Best for distributed coordination, replicated caching, zero-config
-- **Redis**: Best for high throughput, complex data structures, real-time systems
-
-**Best Practice:** Use both!
-- TollMeshCache for distributed rate limiting & replay protection
-- Redis for high-frequency caching & real-time features
-- Complementary, not competitive
-
-Each solves different problems. Choose based on your actual requirements, not hype.
+Use TollMeshCache if the no-central-coordinator architecture specifically matters to your use case and you've verified the six supported features cover what you need. Use Redis for everything else, especially anything requiring persistence, pub/sub, transactions, high throughput, or a track record.

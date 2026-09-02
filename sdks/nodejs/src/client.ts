@@ -464,6 +464,273 @@ export class Client {
     await this.post('/stream/group/ack', { stream, group, consumer, id: entryId });
   }
 
+  // ===== Pub/Sub =====
+
+  /** Subscribe to a topic with optional regex pattern matching */
+  async subscribe(subscriberId: string, topic: string, pattern: string = ''): Promise<void> {
+    await this.post('/pubsub/subscribe', { subscriber_id: subscriberId, topic, pattern });
+  }
+
+  /** Remove a subscription */
+  async unsubscribe(subscriberId: string, topic: string): Promise<void> {
+    await this.post('/pubsub/unsubscribe', { subscriber_id: subscriberId, topic });
+  }
+
+  /** Publish a message to a topic; returns the number of subscribers it was delivered to */
+  async publish(topic: string, publisher: string, payload: string): Promise<number> {
+    const response = await this.post<{ delivered_count: number }>('/pubsub/publish', { topic, publisher, payload });
+    return response.delivered_count;
+  }
+
+  /**
+   * Retrieve up to limit currently-available messages for a subscriber,
+   * waiting up to timeoutMs if none are immediately available.
+   *
+   * @example
+   * await client.subscribe('sub-1', 'events');
+   * await client.publish('events', 'publisher-1', 'hello');
+   * const messages = await client.poll('sub-1');
+   */
+  async poll(subscriberId: string, limit: number = 10, timeoutMs: number = 5000): Promise<unknown[]> {
+    const response = await this.post<{ messages: unknown[] }>('/pubsub/poll', {
+      subscriber_id: subscriberId,
+      limit,
+      timeout_ms: timeoutMs,
+    });
+    return response.messages || [];
+  }
+
+  /** Get all known pub/sub topics */
+  async getTopics(): Promise<string[]> {
+    const response = await this.get<{ topics: string[] }>('/pubsub/topics');
+    return response.topics || [];
+  }
+
+  /** Get subscriber IDs for a topic */
+  async getTopicSubscribers(topic: string): Promise<string[]> {
+    const response = await this.get<{ subscribers: string[] }>('/pubsub/subscribers', { topic });
+    return response.subscribers || [];
+  }
+
+  /** Get pub/sub statistics */
+  async pubsubStats(): Promise<Record<string, unknown>> {
+    return this.get('/pubsub/stats');
+  }
+
+  // ===== Transactions =====
+
+  /** Start a new transaction */
+  async beginTransaction(txnId: string): Promise<Record<string, unknown>> {
+    return this.post('/txn/begin', { txn_id: txnId });
+  }
+
+  /** Queue an operation within a pending transaction. Only "set" operations are applied on commit. */
+  async addTransactionOperation(txnId: string, type: string, namespace: string, key: string, value: string = ''): Promise<void> {
+    await this.post('/txn/operation', { txn_id: txnId, type, namespace, key, value });
+  }
+
+  /**
+   * Commit a transaction, applying all of its queued "set" operations to
+   * the real cache atomically.
+   *
+   * @example
+   * await client.beginTransaction('txn-1');
+   * await client.addTransactionOperation('txn-1', 'set', 'ns', 'key', 'value');
+   * await client.commitTransaction('txn-1');
+   */
+  async commitTransaction(txnId: string): Promise<void> {
+    await this.post('/txn/commit', { txn_id: txnId });
+  }
+
+  /** Roll back a pending transaction, discarding its queued operations */
+  async rollbackTransaction(txnId: string): Promise<void> {
+    await this.post('/txn/rollback', { txn_id: txnId });
+  }
+
+  /** Get the status of a transaction: pending, committed, rolled_back, or failed */
+  async transactionStatus(txnId: string): Promise<string> {
+    const response = await this.get<{ status: string }>('/txn/status', { txn_id: txnId });
+    return response.status;
+  }
+
+  // ===== Persistence =====
+
+  /** Capture the current live store state to disk */
+  async createSnapshot(): Promise<void> {
+    await this.post('/persistence/snapshot', {});
+  }
+
+  /** Get the most recent snapshot, or null if none exist */
+  async getLatestSnapshot(): Promise<Record<string, unknown> | null> {
+    try {
+      return await this.get('/persistence/snapshot/latest');
+    } catch {
+      return null;
+    }
+  }
+
+  /** Load the most recent snapshot and apply it to live store state */
+  async restoreFromLatestSnapshot(): Promise<void> {
+    await this.post('/persistence/restore', {});
+  }
+
+  /** Get persistence statistics */
+  async persistenceStats(): Promise<Record<string, unknown>> {
+    return this.get('/persistence/stats');
+  }
+
+  // ===== Scripting: Pipelines (safe operation composition) =====
+
+  /**
+   * Register a named pipeline: an ordered list of steps, each naming an
+   * existing store operation (e.g. "zadd", "get", "set") plus its
+   * arguments. A step can save its result under a name for later steps to
+   * reference via "$name".
+   */
+  async registerPipeline(name: string, steps: unknown[]): Promise<void> {
+    await this.post('/pipeline/register', { name, steps });
+  }
+
+  /** Run a registered pipeline by name */
+  async executePipeline(name: string): Promise<Record<string, unknown>> {
+    return this.post('/pipeline/execute', { name });
+  }
+
+  /**
+   * Run an ad-hoc list of steps without registering them.
+   *
+   * @example
+   * await client.executeInlinePipeline([
+   *   { op: 'set', args: { namespace: 'ns', key: 'k', value: 'v' } },
+   *   { op: 'get', args: { namespace: 'ns', key: 'k' }, save_as: 'got' },
+   * ]);
+   */
+  async executeInlinePipeline(steps: unknown[]): Promise<Record<string, unknown>> {
+    return this.post('/pipeline/execute-inline', { steps });
+  }
+
+  /** Retrieve a registered pipeline by name */
+  async getPipeline(name: string): Promise<Record<string, unknown>> {
+    return this.get('/pipeline/get', { name });
+  }
+
+  /** List all registered pipelines */
+  async listPipelines(): Promise<unknown[]> {
+    const response = await this.get<{ pipelines: unknown[] }>('/pipeline/list');
+    return response.pipelines || [];
+  }
+
+  /** Remove a registered pipeline */
+  async deletePipeline(name: string): Promise<void> {
+    await this.post('/pipeline/delete', { name });
+  }
+
+  // ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+  /**
+   * Compile Go source to a sandboxed WASM module via TinyGo and register
+   * it under name. This is slow (real seconds -- it invokes an external
+   * compiler) and is expected to happen far less often than executeScript.
+   *
+   * @example
+   * await client.compileScript('greet', `
+   *   package main
+   *   import ("bufio"; "fmt"; "os")
+   *   func main() {
+   *     scanner := bufio.NewScanner(os.Stdin)
+   *     scanner.Scan()
+   *     fmt.Printf("Hello, %s!\n", scanner.Text())
+   *   }
+   * `);
+   * await client.executeScript('greet', 'World'); // "Hello, World!\n"
+   */
+  async compileScript(name: string, source: string): Promise<Record<string, unknown>> {
+    return this.post('/script/compile', { name, source });
+  }
+
+  /** Run a previously compiled script by name, feeding input on stdin */
+  async executeScript(name: string, input: string = ''): Promise<string> {
+    const response = await this.post<{ output: string }>('/script/execute', { name, input });
+    return response.output;
+  }
+
+  /** Compile and immediately run Go source without registering it */
+  async executeInlineScript(source: string, input: string = ''): Promise<string> {
+    const response = await this.post<{ output: string }>('/script/execute-inline', { source, input });
+    return response.output;
+  }
+
+  /** Retrieve a registered script by name */
+  async getScript(name: string): Promise<Record<string, unknown>> {
+    return this.get('/script/get', { name });
+  }
+
+  /** List all registered scripts */
+  async listScripts(): Promise<unknown[]> {
+    const response = await this.get<{ scripts: unknown[] }>('/script/list');
+    return response.scripts || [];
+  }
+
+  /** Remove a registered script */
+  async deleteScript(name: string): Promise<void> {
+    await this.post('/script/delete', { name });
+  }
+
+  // ===== Search =====
+
+  /** Add a document to the search index */
+  async indexDocument(id: string, content: string, metadata?: Record<string, unknown>, vector?: number[]): Promise<void> {
+    await this.post('/search/index', { id, content, metadata, vector });
+  }
+
+  /** Perform BM25 full-text search */
+  async searchBM25(query: string, topK: number = 10): Promise<unknown[]> {
+    const response = await this.get<{ results: unknown[] }>('/search/bm25', { query, topk: topK });
+    return response.results || [];
+  }
+
+  /** Perform vector similarity search */
+  async searchVector(vector: number[], topK: number = 10): Promise<unknown[]> {
+    const response = await this.post<{ results: unknown[] }>('/search/vector', { vector, topk: topK });
+    return response.results || [];
+  }
+
+  /** Perform hybrid BM25 + vector search */
+  async searchHybrid(query: string, vector: number[], topK: number = 10): Promise<unknown[]> {
+    const response = await this.post<{ results: unknown[] }>('/search/hybrid', { query, vector, topk: topK });
+    return response.results || [];
+  }
+
+  /** Remove a document from the search index */
+  async deleteSearchDocument(id: string): Promise<void> {
+    await this.post('/search/delete', { id });
+  }
+
+  // ===== Ranking =====
+
+  /**
+   * Re-rank a list of already-scored items ({ ID, Score }) using the named
+   * strategy ("bm25", "vector", "llm", or "context"). boosts (for
+   * "context") is a per-ID score multiplier map.
+   */
+  async rank(items: unknown[], strategy: string = 'bm25', boosts?: Record<string, number>): Promise<unknown[]> {
+    const response = await this.post<{ items: unknown[] }>('/rank', { items, strategy, boosts });
+    return response.items || [];
+  }
+
+  // ===== Metrics =====
+
+  /** Get current operational metrics */
+  async getMetrics(): Promise<Record<string, unknown>> {
+    return this.get('/metrics');
+  }
+
+  /** Get metrics formatted for Prometheus scraping */
+  async getPrometheusMetrics(): Promise<string> {
+    const response = await this.axiosInstance.get('/metrics/prometheus', { responseType: 'text' });
+    return response.data;
+  }
+
   /**
    * Close client and cleanup resources
    */

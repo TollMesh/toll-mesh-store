@@ -26,11 +26,13 @@ type SearchResult struct {
 
 // BM25Index implements BM25 full-text search
 type BM25Index struct {
-	mu        sync.RWMutex
-	documents map[string]*Document
-	index     map[string]map[string]int // term -> docID -> count
-	docCount  int
-	avgDocLen float32
+	mu          sync.RWMutex
+	documents   map[string]*Document
+	index       map[string]map[string]int // term -> docID -> count
+	docTermsLen map[string]int            // docID -> term count, needed to maintain a true running average
+	docCount    int
+	totalTerms  int64 // sum of all indexed documents' term counts
+	avgDocLen   float32
 }
 
 // VectorIndex implements dense vector search
@@ -50,8 +52,9 @@ type HybridSearchEngine struct {
 // NewBM25Index creates a new BM25 index
 func NewBM25Index() *BM25Index {
 	return &BM25Index{
-		documents: make(map[string]*Document),
-		index:     make(map[string]map[string]int),
+		documents:   make(map[string]*Document),
+		index:       make(map[string]map[string]int),
+		docTermsLen: make(map[string]int),
 	}
 }
 
@@ -105,8 +108,14 @@ func (hse *HybridSearchEngine) indexBM25(doc *Document) {
 		hse.bm25.index[term][doc.ID]++
 	}
 
-	// Update average document length
-	hse.bm25.avgDocLen = float32(len(terms))
+	// Maintain a true running average across all indexed documents. This
+	// previously just assigned len(terms), so avgDocLen silently became
+	// whichever document happened to be indexed most recently instead of
+	// an average -- corrupting every BM25 score, since avgDocLen is a
+	// direct term in the scoring formula.
+	hse.bm25.docTermsLen[doc.ID] = len(terms)
+	hse.bm25.totalTerms += int64(len(terms))
+	hse.bm25.avgDocLen = float32(hse.bm25.totalTerms) / float32(hse.bm25.docCount)
 }
 
 // SearchBM25 performs BM25 full-text search
@@ -249,7 +258,31 @@ func (hse *HybridSearchEngine) DeleteDocument(docID string) error {
 	defer hse.mu.Unlock()
 
 	hse.bm25.mu.Lock()
-	delete(hse.bm25.documents, docID)
+	if _, exists := hse.bm25.documents[docID]; exists {
+		delete(hse.bm25.documents, docID)
+
+		// Previously the inverted index (term -> docID -> count) was never
+		// cleaned up on delete: a deleted document's ID stayed in every
+		// term's postings, so a later search would still match it and then
+		// nil-dereference on hse.bm25.documents[docID].Content, since the
+		// document itself had been removed. Remove the doc's postings from
+		// every term it appeared in, and prune terms left with no postings.
+		for term, postings := range hse.bm25.index {
+			delete(postings, docID)
+			if len(postings) == 0 {
+				delete(hse.bm25.index, term)
+			}
+		}
+
+		hse.bm25.totalTerms -= int64(hse.bm25.docTermsLen[docID])
+		delete(hse.bm25.docTermsLen, docID)
+		hse.bm25.docCount--
+		if hse.bm25.docCount > 0 {
+			hse.bm25.avgDocLen = float32(hse.bm25.totalTerms) / float32(hse.bm25.docCount)
+		} else {
+			hse.bm25.avgDocLen = 0
+		}
+	}
 	hse.bm25.mu.Unlock()
 
 	hse.vector.mu.Lock()

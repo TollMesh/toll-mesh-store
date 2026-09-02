@@ -23,7 +23,10 @@ type BM25Ranker struct{}
 // VectorRanker ranks by vector similarity
 type VectorRanker struct{}
 
-// LLMRanker ranks using LLM cross-encoder
+// LLMRanker sorts items by their existing Score field. There is no LLM
+// integration in this system; this is a plain score-based reranker
+// intended to be used as one interchangeable stage of a RankingPipeline
+// alongside BM25Ranker/VectorRanker, not an actual cross-encoder.
 type LLMRanker struct{}
 
 // ContextRanker ranks by domain-specific context
@@ -86,7 +89,7 @@ func NewLLMRanker() *LLMRanker {
 	return &LLMRanker{}
 }
 
-// Rank implements LLM-based ranking
+// Rank sorts by the existing Score field (see LLMRanker doc comment).
 func (lr *LLMRanker) Rank(items []RankedItem) []RankedItem {
 	sorted := make([]RankedItem, len(items))
 	copy(sorted, items)
@@ -109,10 +112,21 @@ func NewContextRanker(context map[string]interface{}) *ContextRanker {
 	}
 }
 
-// Rank implements context-based ranking
+// Rank sorts by Score after applying per-ID multiplicative boosts from the
+// ranker's context. Pass context["boosts"] as a map[string]float32 of item
+// ID to multiplier (e.g. {"item-42": 2.0} doubles that item's score before
+// sorting). Items with no boost entry are left at their original score.
 func (cr *ContextRanker) Rank(items []RankedItem) []RankedItem {
 	sorted := make([]RankedItem, len(items))
 	copy(sorted, items)
+
+	if boosts, ok := cr.context["boosts"].(map[string]float32); ok {
+		for i := range sorted {
+			if factor, exists := boosts[sorted[i].ID]; exists {
+				sorted[i].Score *= factor
+			}
+		}
+	}
 
 	sort.Slice(sorted, func(i, j int) bool {
 		return sorted[i].Score > sorted[j].Score

@@ -5,7 +5,12 @@
 // stdin and its result is read from stdout, mirroring Redis's SCRIPT
 // LOAD + EVALSHA split: compilation is slow (TinyGo takes real seconds)
 // and happens once via Compile; execution is cheap and happens many times
-// via Execute, which only instantiates the already-compiled module.
+// via Execute.
+//
+// Execute reuses a single long-lived wazero.Runtime and a per-script
+// wazero.CompiledModule cached at Compile time, so repeated Execute calls
+// only pay for instantiation (cheap), not for re-decoding and re-compiling
+// the WASM bytecode to native code (the expensive step) on every call.
 package scripting
 
 import (
@@ -16,6 +21,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/tetratelabs/wazero"
@@ -26,21 +32,27 @@ import (
 type CompiledScript struct {
 	Name       string `json:"name"`
 	Source     string `json:"source"`
-	WasmBytes  []byte `json:"-"`
 	WasmSize   int    `json:"wasm_size"`
 	Compiled   int64  `json:"compiled"`
 	Executions int64  `json:"executions"`
 	LastError  string `json:"last_error,omitempty"`
+
+	// compiled is the decoded-and-compiled WASM module, cached so Execute
+	// only has to instantiate it, not re-decode raw bytes every call.
+	compiled wazero.CompiledModule
 }
 
 // WasmEngine compiles Go source to WASI WebAssembly via TinyGo and executes
-// compiled modules in a sandboxed wazero runtime.
+// compiled modules in a shared, sandboxed wazero runtime.
 type WasmEngine struct {
 	mu          sync.RWMutex
 	scripts     map[string]*CompiledScript
 	tinygoPath  string
 	execTimeout time.Duration
 	memoryPages uint32 // wasm memory limit, in 64KiB pages
+
+	runtime  wazero.Runtime
+	instance uint64 // atomic counter for unique per-call module instance names
 }
 
 // NewWasmEngine creates a new engine. tinygoPath is the path to the tinygo
@@ -58,35 +70,74 @@ func NewWasmEngine(tinygoPath string, execTimeout time.Duration) (*WasmEngine, e
 		return nil, fmt.Errorf("tinygo binary not found at %s: %w", tinygoPath, err)
 	}
 
+	ctx := context.Background()
+	memoryPages := uint32(256) // 16MiB
+
+	// WithCloseOnContextDone makes the interpreter/compiler insert periodic
+	// cancellation checks, so a timed-out or explicitly-cancelled call's
+	// api.Module instance is force-closed even mid-tight-loop. It closes
+	// only the module instance whose call context was cancelled, not this
+	// shared Runtime -- confirmed against wazero's source, since otherwise
+	// one script's timeout would tear down every other cached CompiledModule
+	// and any concurrently running script.
+	runtimeConfig := wazero.NewRuntimeConfig().
+		WithMemoryLimitPages(memoryPages).
+		WithCloseOnContextDone(true)
+	runtime := wazero.NewRuntimeWithConfig(ctx, runtimeConfig)
+
+	if _, err := wasi_snapshot_preview1.Instantiate(ctx, runtime); err != nil {
+		runtime.Close(ctx)
+		return nil, fmt.Errorf("failed to instantiate WASI: %w", err)
+	}
+
 	return &WasmEngine{
 		scripts:     make(map[string]*CompiledScript),
 		tinygoPath:  tinygoPath,
 		execTimeout: execTimeout,
-		memoryPages: 256, // 16MiB
+		memoryPages: memoryPages,
+		runtime:     runtime,
 	}, nil
 }
 
-// Compile compiles Go source to a WASI WASM module via TinyGo and registers
-// it under name, replacing any existing script with that name. This is the
-// slow path (real seconds, since it invokes an external compiler process)
-// and is expected to happen far less often than Execute.
+// Close releases the engine's shared runtime and every module compiled
+// against it. The engine must not be used afterward.
+func (e *WasmEngine) Close() error {
+	return e.runtime.Close(context.Background())
+}
+
+// Compile compiles Go source to a WASI WASM module via TinyGo, decodes and
+// compiles it once against the shared runtime, and registers it under name,
+// replacing (and releasing) any existing script with that name. This is the
+// slow path (real seconds, since it invokes an external compiler process
+// plus wazero's own bytecode-to-native compilation) and is expected to
+// happen far less often than Execute.
 func (e *WasmEngine) Compile(name, source string) (*CompiledScript, error) {
 	wasmBytes, err := e.compileSource(source)
 	if err != nil {
 		return nil, err
 	}
 
+	compiled, err := e.runtime.CompileModule(context.Background(), wasmBytes)
+	if err != nil {
+		return nil, fmt.Errorf("failed to compile wasm module: %w", err)
+	}
+
 	script := &CompiledScript{
-		Name:      name,
-		Source:    source,
-		WasmBytes: wasmBytes,
-		WasmSize:  len(wasmBytes),
-		Compiled:  time.Now().UnixMilli(),
+		Name:     name,
+		Source:   source,
+		WasmSize: len(wasmBytes),
+		Compiled: time.Now().UnixMilli(),
+		compiled: compiled,
 	}
 
 	e.mu.Lock()
+	old, existed := e.scripts[name]
 	e.scripts[name] = script
 	e.mu.Unlock()
+
+	if existed {
+		old.compiled.Close(context.Background())
+	}
 
 	return script, nil
 }
@@ -135,6 +186,8 @@ func (e *WasmEngine) compileSource(source string) ([]byte, error) {
 // Execute runs a registered script by name, feeding input on stdin and
 // returning what it wrote to stdout. Enforces the engine's execution
 // timeout regardless of what the script does (including an infinite loop).
+// Reuses the script's cached CompiledModule, so this only pays for
+// instantiation, not for recompiling the WASM bytecode.
 func (e *WasmEngine) Execute(name, input string) (string, error) {
 	e.mu.RLock()
 	script, exists := e.scripts[name]
@@ -143,7 +196,7 @@ func (e *WasmEngine) Execute(name, input string) (string, error) {
 		return "", fmt.Errorf("script not found: %s", name)
 	}
 
-	output, err := e.run(script.WasmBytes, input)
+	output, err := e.run(script.compiled, input)
 
 	e.mu.Lock()
 	script.Executions++
@@ -157,45 +210,46 @@ func (e *WasmEngine) Execute(name, input string) (string, error) {
 
 // ExecuteInline compiles and immediately runs Go source without
 // registering it. Both the (slow) compile and the (bounded) execution
-// happen synchronously in this call.
+// happen synchronously in this call; the one-shot CompiledModule is
+// released once execution finishes.
 func (e *WasmEngine) ExecuteInline(source, input string) (string, error) {
 	wasmBytes, err := e.compileSource(source)
 	if err != nil {
 		return "", err
 	}
-	return e.run(wasmBytes, input)
+
+	compiled, err := e.runtime.CompileModule(context.Background(), wasmBytes)
+	if err != nil {
+		return "", fmt.Errorf("failed to compile wasm module: %w", err)
+	}
+	defer compiled.Close(context.Background())
+
+	return e.run(compiled, input)
 }
 
-// run instantiates a WASM module in a fresh, sandboxed wazero runtime and
-// executes it, enforcing execTimeout via WithCloseOnContextDone. That
-// option is off by default in wazero (it costs a small amount of
-// performance, since it makes the interpreter/compiler insert periodic
-// cancellation checks into the generated code), but without it a tight
-// loop with no host calls has no point at which ctx cancellation, or even
-// an explicit Close, can ever take effect -- confirmed by an earlier
-// version of this function hanging for 2+ minutes against an infinite-loop
-// script despite closing the runtime from a watcher goroutine on timeout.
-func (e *WasmEngine) run(wasmBytes []byte, input string) (string, error) {
+// run instantiates an already-compiled WASM module against the engine's
+// shared runtime and executes it, enforcing execTimeout via
+// WithCloseOnContextDone (configured on the shared runtime at engine
+// creation). Each call uses a unique module instance name since wazero
+// requires instance names to be unique within a runtime, and the same
+// CompiledModule can be instantiated concurrently by overlapping Execute
+// calls.
+func (e *WasmEngine) run(compiled wazero.CompiledModule, input string) (string, error) {
 	ctx, cancel := context.WithTimeout(context.Background(), e.execTimeout)
 	defer cancel()
 
-	runtimeConfig := wazero.NewRuntimeConfig().
-		WithMemoryLimitPages(e.memoryPages).
-		WithCloseOnContextDone(true)
-	r := wazero.NewRuntimeWithConfig(ctx, runtimeConfig)
-	defer r.Close(context.Background())
-
-	if _, err := wasi_snapshot_preview1.Instantiate(ctx, r); err != nil {
-		return "", fmt.Errorf("failed to instantiate WASI: %w", err)
-	}
-
 	var stdout, stderr bytes.Buffer
+	instanceName := fmt.Sprintf("run-%d", atomic.AddUint64(&e.instance, 1))
 	moduleConfig := wazero.NewModuleConfig().
+		WithName(instanceName).
 		WithStdin(bytes.NewReader([]byte(input))).
 		WithStdout(&stdout).
 		WithStderr(&stderr)
 
-	_, err := r.InstantiateWithConfig(ctx, wasmBytes, moduleConfig)
+	mod, err := e.runtime.InstantiateModule(ctx, compiled, moduleConfig)
+	if mod != nil {
+		defer mod.Close(context.Background())
+	}
 	if err != nil {
 		if ctx.Err() == context.DeadlineExceeded {
 			return stdout.String(), fmt.Errorf("script execution timed out after %s", e.execTimeout)
@@ -246,14 +300,19 @@ func (e *WasmEngine) ListScripts() []*CompiledScript {
 	return scripts
 }
 
-// DeleteScript removes a registered script.
+// DeleteScript removes a registered script and releases its compiled
+// module.
 func (e *WasmEngine) DeleteScript(name string) error {
 	e.mu.Lock()
-	defer e.mu.Unlock()
-	if _, exists := e.scripts[name]; !exists {
+	script, exists := e.scripts[name]
+	if !exists {
+		e.mu.Unlock()
 		return fmt.Errorf("script not found: %s", name)
 	}
 	delete(e.scripts, name)
+	e.mu.Unlock()
+
+	script.compiled.Close(context.Background())
 	return nil
 }
 

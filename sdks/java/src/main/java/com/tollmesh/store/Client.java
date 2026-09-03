@@ -383,7 +383,309 @@ public class Client implements AutoCloseable {
         post("/stream/group/ack", body, Void.class);
     }
 
+    // ===== Pub/Sub =====
+
+    public void subscribe(String subscriberId, String topic, String pattern) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("subscriber_id", subscriberId);
+        body.put("topic", topic);
+        body.put("pattern", pattern);
+        post("/pubsub/subscribe", body, Void.class);
+    }
+
+    public void unsubscribe(String subscriberId, String topic) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("subscriber_id", subscriberId);
+        body.put("topic", topic);
+        post("/pubsub/unsubscribe", body, Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public int publish(String topic, String publisher, String payload) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("topic", topic);
+        body.put("publisher", publisher);
+        body.put("payload", payload);
+        Map<String, Object> response = post("/pubsub/publish", body, Map.class);
+        return ((Number) response.get("delivered_count")).intValue();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> poll(String subscriberId, int limit, long timeoutMs) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("subscriber_id", subscriberId);
+        body.put("limit", limit);
+        body.put("timeout_ms", timeoutMs);
+        Map<String, Object> response = post("/pubsub/poll", body, Map.class);
+        List<Object> messages = (List<Object>) response.get("messages");
+        return messages != null ? messages : Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getTopics() throws TollMeshException {
+        Map<String, Object> response = get("/pubsub/topics", Map.class);
+        List<String> topics = (List<String>) response.get("topics");
+        return topics != null ? topics : Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<String> getTopicSubscribers(String topic) throws TollMeshException {
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("topic", topic);
+        Map<String, Object> response = get("/pubsub/subscribers", query, Map.class);
+        List<String> subscribers = (List<String>) response.get("subscribers");
+        return subscribers != null ? subscribers : Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> pubsubStats() throws TollMeshException {
+        return get("/pubsub/stats", Map.class);
+    }
+
+    // ===== Transactions =====
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> beginTransaction(String txnId) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("txn_id", txnId);
+        return post("/txn/begin", body, Map.class);
+    }
+
+    public void addTransactionOperation(String txnId, String type, String namespace, String key, String value) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("txn_id", txnId);
+        body.put("type", type);
+        body.put("namespace", namespace);
+        body.put("key", key);
+        body.put("value", value);
+        post("/txn/operation", body, Void.class);
+    }
+
+    public void commitTransaction(String txnId) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("txn_id", txnId);
+        post("/txn/commit", body, Void.class);
+    }
+
+    public void rollbackTransaction(String txnId) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("txn_id", txnId);
+        post("/txn/rollback", body, Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public String transactionStatus(String txnId) throws TollMeshException {
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("txn_id", txnId);
+        Map<String, Object> response = get("/txn/status", query, Map.class);
+        return (String) response.get("status");
+    }
+
+    // ===== Persistence =====
+
+    public void createSnapshot() throws TollMeshException {
+        post("/persistence/snapshot", new LinkedHashMap<>(), Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getLatestSnapshot() throws TollMeshException {
+        return get("/persistence/snapshot/latest", Map.class);
+    }
+
+    public void restoreFromLatestSnapshot() throws TollMeshException {
+        post("/persistence/restore", new LinkedHashMap<>(), Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> persistenceStats() throws TollMeshException {
+        return get("/persistence/stats", Map.class);
+    }
+
+    // ===== Scripting: Pipelines (safe operation composition) =====
+
+    public void registerPipeline(String name, List<Map<String, Object>> steps) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        body.put("steps", steps);
+        post("/pipeline/register", body, Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> executePipeline(String name) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        return post("/pipeline/execute", body, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> executeInlinePipeline(List<Map<String, Object>> steps) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("steps", steps);
+        return post("/pipeline/execute-inline", body, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getPipeline(String name) throws TollMeshException {
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("name", name);
+        return get("/pipeline/get", query, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> listPipelines() throws TollMeshException {
+        Map<String, Object> response = get("/pipeline/list", Map.class);
+        List<Object> pipelines = (List<Object>) response.get("pipelines");
+        return pipelines != null ? pipelines : Collections.emptyList();
+    }
+
+    public void deletePipeline(String name) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        post("/pipeline/delete", body, Void.class);
+    }
+
+    // ===== Scripting: WASM (real arbitrary Go code execution) =====
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> compileScript(String name, String source) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        body.put("source", source);
+        return post("/script/compile", body, Map.class, Duration.ofSeconds(65));
+    }
+
+    @SuppressWarnings("unchecked")
+    public String executeScript(String name, String input) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        body.put("input", input);
+        Map<String, Object> response = post("/script/execute", body, Map.class);
+        return (String) response.get("output");
+    }
+
+    @SuppressWarnings("unchecked")
+    public String executeInlineScript(String source, String input) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("source", source);
+        body.put("input", input);
+        // execute-inline compiles the script itself, so it needs the same
+        // extended timeout as compileScript, not just execute's normal one.
+        Map<String, Object> response = post("/script/execute-inline", body, Map.class, Duration.ofSeconds(65));
+        return (String) response.get("output");
+    }
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getScript(String name) throws TollMeshException {
+        Map<String, String> query = new LinkedHashMap<>();
+        query.put("name", name);
+        return get("/script/get", query, Map.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> listScripts() throws TollMeshException {
+        Map<String, Object> response = get("/script/list", Map.class);
+        List<Object> scripts = (List<Object>) response.get("scripts");
+        return scripts != null ? scripts : Collections.emptyList();
+    }
+
+    public void deleteScript(String name) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("name", name);
+        post("/script/delete", body, Void.class);
+    }
+
+    // ===== Search =====
+
+    public void indexDocument(String id, String content, Map<String, Object> metadata, List<Float> vector) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", id);
+        body.put("content", content);
+        if (metadata != null) body.put("metadata", metadata);
+        if (vector != null) body.put("vector", vector);
+        post("/search/index", body, Void.class);
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> searchBM25(String query, int topK) throws TollMeshException {
+        Map<String, String> params = new LinkedHashMap<>();
+        params.put("query", query);
+        params.put("topk", String.valueOf(topK));
+        Map<String, Object> response = get("/search/bm25", params, Map.class);
+        List<Object> results = (List<Object>) response.get("results");
+        return results != null ? results : Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> searchVector(List<Float> vector, int topK) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("vector", vector);
+        body.put("topk", topK);
+        Map<String, Object> response = post("/search/vector", body, Map.class);
+        List<Object> results = (List<Object>) response.get("results");
+        return results != null ? results : Collections.emptyList();
+    }
+
+    @SuppressWarnings("unchecked")
+    public List<Object> searchHybrid(String query, List<Float> vector, int topK) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("query", query);
+        body.put("vector", vector);
+        body.put("topk", topK);
+        Map<String, Object> response = post("/search/hybrid", body, Map.class);
+        List<Object> results = (List<Object>) response.get("results");
+        return results != null ? results : Collections.emptyList();
+    }
+
+    public void deleteSearchDocument(String id) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("id", id);
+        post("/search/delete", body, Void.class);
+    }
+
+    // ===== Ranking =====
+
+    @SuppressWarnings("unchecked")
+    public List<Object> rank(List<Map<String, Object>> items, String strategy, Map<String, Float> boosts) throws TollMeshException {
+        Map<String, Object> body = new LinkedHashMap<>();
+        body.put("items", items);
+        body.put("strategy", strategy);
+        if (boosts != null) body.put("boosts", boosts);
+        Map<String, Object> response = post("/rank", body, Map.class);
+        List<Object> result = (List<Object>) response.get("items");
+        return result != null ? result : Collections.emptyList();
+    }
+
+    // ===== Metrics =====
+
+    @SuppressWarnings("unchecked")
+    public Map<String, Object> getMetrics() throws TollMeshException {
+        return get("/metrics", Map.class);
+    }
+
+    public String getPrometheusMetrics() throws TollMeshException {
+        Request request = new Request.Builder()
+                .url(baseUrl + "/metrics/prometheus")
+                .get()
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            return response.body() != null ? response.body().string() : "";
+        } catch (IOException e) {
+            throw new TollMeshException(ErrorCode.UNAVAILABLE, "Request failed: " + e.getMessage(), e);
+        }
+    }
+
     private <T> T post(String endpoint, Map<String, Object> body, Class<T> responseType) throws TollMeshException {
+        return post(endpoint, body, responseType, null);
+    }
+
+    // scriptCompileTimeout, when non-null, overrides the client's configured
+    // timeout for this one call. TinyGo compilation (used by /script/compile
+    // and /script/execute-inline) legitimately takes several real seconds --
+    // the server allows up to 60s for it -- which is longer than this SDK's
+    // default 5s HTTP timeout. Every other call keeps the configured default;
+    // only the two compile-triggering endpoints need the longer allowance.
+    private <T> T post(String endpoint, Map<String, Object> body, Class<T> responseType, Duration scriptCompileTimeout) throws TollMeshException {
         try {
             String json = mapper.writeValueAsString(body);
             RequestBody requestBody = RequestBody.create(json, JSON);
@@ -393,7 +695,12 @@ public class Client implements AutoCloseable {
                     .post(requestBody)
                     .build();
 
-            return executeRequest(request, responseType);
+            OkHttpClient client = httpClient;
+            if (scriptCompileTimeout != null) {
+                client = httpClient.newBuilder().readTimeout(scriptCompileTimeout).build();
+            }
+
+            return executeRequest(client, request, responseType);
         } catch (IOException e) {
             throw new TollMeshException(ErrorCode.INTERNAL, "Failed to serialize request: " + e.getMessage(), e);
         }
@@ -433,7 +740,11 @@ public class Client implements AutoCloseable {
     }
 
     private <T> T executeRequest(Request request, Class<T> responseType) throws TollMeshException {
-        try (Response response = httpClient.newCall(request).execute()) {
+        return executeRequest(httpClient, request, responseType);
+    }
+
+    private <T> T executeRequest(OkHttpClient client, Request request, Class<T> responseType) throws TollMeshException {
+        try (Response response = client.newCall(request).execute()) {
             String body = response.body() != null ? response.body().string() : "";
 
             if (!response.isSuccessful()) {

@@ -71,6 +71,31 @@ func TestExecuteCanRunMultipleTimesWithoutRecompiling(t *testing.T) {
 	}
 }
 
+// TestExecuteReusesCompiledModule is a regression test for a bug where
+// every Execute call re-decoded and re-compiled the raw WASM bytes from
+// scratch (via wazero's InstantiateWithConfig on []byte) instead of reusing
+// the CompiledModule cached at Compile time -- silently defeating the
+// "compile once, execute many times cheaply" design and making Execute as
+// slow as compilation itself. A real Execute call (just instantiating an
+// already-compiled module) should complete in well under a second; the
+// broken version took seconds, same order of magnitude as Compile.
+func TestExecuteReusesCompiledModule(t *testing.T) {
+	e := newTestWasmEngine(t, 5*time.Second)
+	if _, err := e.Compile("echo", echoScript); err != nil {
+		t.Fatalf("compile failed: %v", err)
+	}
+
+	start := time.Now()
+	if _, err := e.Execute("echo", "run"); err != nil {
+		t.Fatalf("execute failed: %v", err)
+	}
+	elapsed := time.Since(start)
+
+	if elapsed > 500*time.Millisecond {
+		t.Errorf("Execute took %s, expected well under 500ms -- looks like it's recompiling the module instead of reusing the cached CompiledModule", elapsed)
+	}
+}
+
 func TestExecuteInline(t *testing.T) {
 	e := newTestWasmEngine(t, 5*time.Second)
 	output, err := e.ExecuteInline(echoScript, "inline test")

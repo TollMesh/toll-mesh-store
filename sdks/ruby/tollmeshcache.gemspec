@@ -1,6 +1,6 @@
 Gem::Specification.new do |s|
   s.name          = "tollmeshcache"
-  s.version       = "1.0.0"
+  s.version       = "1.1.0"
   s.authors       = ["TollMesh Team"]
   s.email         = ["team@tollmesh.io"]
   s.summary       = "Ruby SDK for TollMeshCache"

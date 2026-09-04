@@ -345,7 +345,7 @@ module TollMeshCache
 
     def get_prometheus_metrics
       url = @config.base_url + '/metrics/prometheus'
-      response = @http.get(url, header: { 'User-Agent' => 'tollmeshcache-ruby/1.0.0' })
+      response = @http.get(url, header: { 'User-Agent' => 'tollmeshcache-ruby/1.1.0' })
       response.body
     end
 
@@ -359,7 +359,7 @@ module TollMeshCache
       url = @config.base_url + endpoint
       headers = {
         'Content-Type' => 'application/json',
-        'User-Agent' => 'tollmeshcache-ruby/1.0.0'
+        'User-Agent' => 'tollmeshcache-ruby/1.1.0'
       }
       headers['X-API-Key'] = @config.api_key if @config.api_key
 
@@ -369,7 +369,7 @@ module TollMeshCache
 
     def get(endpoint, query: nil)
       url = @config.base_url + endpoint
-      headers = { 'User-Agent' => 'tollmeshcache-ruby/1.0.0' }
+      headers = { 'User-Agent' => 'tollmeshcache-ruby/1.1.0' }
       headers['X-API-Key'] = @config.api_key if @config.api_key
 
       response = @http.get(url, query: query, header: headers)

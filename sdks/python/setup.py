@@ -5,7 +5,7 @@ with open("../../../sdks/python/README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="tollmeshcache",
-    version="1.0.0",
+    version="1.1.0",
     author="TollMesh Team",
     author_email="team@tollmesh.io",
     description="Python SDK for TollMeshCache - Distributed CRDT-based caching",

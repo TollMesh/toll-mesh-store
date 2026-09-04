@@ -2,8 +2,10 @@ package coordination
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"math/rand"
+	"net/http"
 	"sync"
 	"time"
 
@@ -18,7 +20,11 @@ type GossipMessage struct {
 	ReplayProtection []string               `json:"replay_protection"`
 }
 
-// GossipCoordinator manages peer-to-peer state synchronization
+// GossipCoordinator manages peer-to-peer state synchronization. A peer's
+// core.Node.Address/Port are that peer's HTTP API address (the same one
+// SDKs talk to) -- gossip rides the HTTP API rather than a separate wire
+// protocol, fetching GET <peer>/internal/state each round and handing the
+// decoded state to whatever stateMerger was registered.
 type GossipCoordinator struct {
 	mu             sync.RWMutex
 	config         *core.ClusterConfig
@@ -27,6 +33,8 @@ type GossipCoordinator struct {
 	syncInterval   time.Duration
 	stopChan       chan struct{}
 	messageHandler func(msg *GossipMessage) error
+	stateMerger    func(peer *core.MeshStoreState)
+	httpClient     *http.Client
 }
 
 // NewGossipCoordinator creates a new gossip coordinator
@@ -37,6 +45,7 @@ func NewGossipCoordinator(config *core.ClusterConfig, syncInterval time.Duration
 		lastSync:     make(map[string]time.Time),
 		syncInterval: syncInterval,
 		stopChan:     make(chan struct{}),
+		httpClient:   &http.Client{Timeout: 5 * time.Second},
 	}
 
 	// Initialize peers from config
@@ -47,6 +56,15 @@ func NewGossipCoordinator(config *core.ClusterConfig, syncInterval time.Duration
 	}
 
 	return gc
+}
+
+// RegisterStateMerger registers the function called with a peer's decoded
+// state after each successful gossip round. In practice this is
+// MeshStore.MergeState.
+func (gc *GossipCoordinator) RegisterStateMerger(merger func(peer *core.MeshStoreState)) {
+	gc.mu.Lock()
+	defer gc.mu.Unlock()
+	gc.stateMerger = merger
 }
 
 // Start begins the gossip protocol
@@ -85,25 +103,51 @@ func (gc *GossipCoordinator) gossipLoop(ctx context.Context) {
 	}
 }
 
-// performGossip selects a random peer and syncs state
+// performGossip selects a random peer, fetches its current state over
+// HTTP, and merges it into local state via the registered stateMerger.
 func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	gc.mu.RLock()
 	peers := make([]*core.Node, 0, len(gc.peers))
 	for _, peer := range gc.peers {
 		peers = append(peers, peer)
 	}
+	merger := gc.stateMerger
+	client := gc.httpClient
 	gc.mu.RUnlock()
 
-	if len(peers) == 0 {
+	if len(peers) == 0 || merger == nil {
 		return
 	}
 
 	// Select random peer
 	peer := peers[rand.Intn(len(peers))]
 
-	// Send gossip message (implementation depends on transport)
-	// This is a placeholder for the actual network communication
-	_ = peer
+	url := fmt.Sprintf("http://%s:%d/internal/state", peer.Address, peer.Port)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return
+	}
+
+	var state core.MeshStoreState
+	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
+		return
+	}
+
+	merger(&state)
+
+	gc.mu.Lock()
+	gc.lastSync[peer.ID] = time.Now()
+	gc.mu.Unlock()
 }
 
 // HandleMessage processes an incoming gossip message

@@ -729,6 +729,145 @@ func (ms *MeshStore) GetPersistenceStats(ctx context.Context) map[string]interfa
 	return ms.persistence.GetStats()
 }
 
+// ===== Gossip replication =====
+//
+// GetState and MergeState are the two halves of this node's multi-node
+// replication: a peer periodically fetches this node's GetState() over
+// HTTP (see api/http.go's /internal/state) and feeds the result into its
+// own MergeState. Only the original three CRDT-backed primitives (rate
+// limiting, replay protection, cache) are covered -- the eight feature
+// groups added later (Pub/Sub, Transactions, Persistence, Pipelines, WASM
+// Scripting, Search, Ranking, Metrics) are not part of this state and
+// remain single-node only.
+
+// GetState returns a snapshot of this node's replicated CRDT state, for a
+// peer to merge into its own via MergeState.
+func (ms *MeshStore) GetState() *core.MeshStoreState {
+	ms.mu.RLock()
+	defer ms.mu.RUnlock()
+
+	rateLimiters := make(map[string]interface{}, len(ms.rateLimiters))
+	for k, v := range ms.rateLimiters {
+		rateLimiters[k] = v.Snapshot()
+	}
+
+	cacheCopy := make(map[string]map[string][]byte, len(ms.cache))
+	for ns, kv := range ms.cache {
+		nsCopy := make(map[string][]byte, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = v
+		}
+		cacheCopy[ns] = nsCopy
+	}
+
+	cacheTTLCopy := make(map[string]map[string]int64, len(ms.cacheTTL))
+	for ns, kv := range ms.cacheTTL {
+		nsCopy := make(map[string]int64, len(kv))
+		for k, v := range kv {
+			nsCopy[k] = v.UnixMilli()
+		}
+		cacheTTLCopy[ns] = nsCopy
+	}
+
+	return &core.MeshStoreState{
+		RateLimiters:     rateLimiters,
+		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
+		Cache:            cacheCopy,
+		CacheTTL:         cacheTTLCopy,
+	}
+}
+
+// MergeState merges a peer's state into this node's live state using each
+// primitive's real CRDT merge: GCounter and GSet merge is commutative,
+// associative, and idempotent, so it is safe to apply the same peer state
+// more than once or in any order. Cache entries have no per-key vector
+// clock in this implementation, so cache merge is a conservative union:
+// a peer's entry is only adopted for a key this node doesn't already have.
+// This means two nodes independently overwriting the *same* cache key
+// between gossip rounds will not converge to a single winner the way the
+// GCounter/GSet-backed primitives do -- a known, documented limitation
+// rather than a full CRDT (a per-key Lamport/vector clock would be needed
+// to resolve that correctly, matching what SortedSet already does).
+func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
+	if peer == nil {
+		return
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+
+	for key, raw := range peer.RateLimiters {
+		counts := decodeGCounterSnapshot(raw)
+		if len(counts) == 0 {
+			continue
+		}
+		local, exists := ms.rateLimiters[key]
+		if !exists {
+			local = core.NewGCounter()
+			ms.rateLimiters[key] = local
+		}
+		local.Merge(core.RestoreGCounter(counts))
+	}
+
+	if len(peer.ReplayProtection) > 0 {
+		items := make([]string, 0, len(peer.ReplayProtection))
+		for item, seen := range peer.ReplayProtection {
+			if seen {
+				items = append(items, item)
+			}
+		}
+		ms.replayProtection.Merge(core.RestoreGSet(items))
+	}
+
+	for ns, kv := range peer.Cache {
+		if _, exists := ms.cache[ns]; !exists {
+			ms.cache[ns] = make(map[string][]byte)
+			ms.cacheTTL[ns] = make(map[string]time.Time)
+		}
+		for k, v := range kv {
+			if _, exists := ms.cache[ns][k]; exists {
+				continue
+			}
+			ms.cache[ns][k] = v
+			if peer.CacheTTL != nil {
+				if ttlMs, ok := peer.CacheTTL[ns][k]; ok && ttlMs > 0 {
+					ms.cacheTTL[ns][k] = time.UnixMilli(ttlMs)
+				}
+			}
+		}
+	}
+}
+
+// boolMap converts a GSet snapshot ([]string) into the map[string]bool
+// shape core.MeshStoreState.ReplayProtection uses on the wire.
+func boolMap(items []string) map[string]bool {
+	out := make(map[string]bool, len(items))
+	for _, item := range items {
+		out[item] = true
+	}
+	return out
+}
+
+// decodeGCounterSnapshot recovers a GCounter's per-node counts from the
+// interface{} produced by json.Unmarshal of GetState's output -- numbers
+// decode as float64, not int, once they've round-tripped through JSON.
+func decodeGCounterSnapshot(raw interface{}) map[string]int {
+	counts := map[string]int{}
+	switch v := raw.(type) {
+	case map[string]int:
+		for k, c := range v {
+			counts[k] = c
+		}
+	case map[string]interface{}:
+		for k, c := range v {
+			if f, ok := c.(float64); ok {
+				counts[k] = int(f)
+			}
+		}
+	}
+	return counts
+}
+
 // ===== Scripting (Pipelines) =====
 
 // RegisterPipeline registers a named pipeline for later execution by name.

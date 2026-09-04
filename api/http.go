@@ -89,6 +89,10 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 	hs.mux.HandleFunc("/cache/set", hs.handleCacheSet)
 	hs.mux.HandleFunc("/peers", hs.handlePeers)
 
+	// Gossip replication transport (node-to-node, not part of the SDK-facing API)
+	hs.mux.HandleFunc("/internal/state", hs.handleInternalState)
+	hs.mux.HandleFunc("/internal/peers/join", hs.handleInternalPeersJoin)
+
 	// Job Queues
 	hs.mux.HandleFunc("/queue/enqueue", hs.handleEnqueue)
 	hs.mux.HandleFunc("/queue/claim", hs.handleClaimJob)
@@ -340,6 +344,66 @@ func (hs *HTTPServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 		"peers": peerList,
 		"count": len(peers),
 	})
+}
+
+// handleInternalState serves this node's replicated CRDT state (rate
+// limiters, replay protection, cache) for a peer's gossip round to fetch
+// and merge. Not part of the SDK-facing API -- see MeshStore.GetState.
+func (hs *HTTPServer) handleInternalState(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(hs.store.GetState())
+}
+
+// PeerJoinRequest is how a node announces itself to another node's cluster.
+type PeerJoinRequest struct {
+	// Address/Port are the joining node's own HTTP API address -- the same
+	// address gossip will later fetch /internal/state from.
+	Address string `json:"address"`
+	Port    int    `json:"port"`
+}
+
+// handleInternalPeersJoin registers the caller as a peer and returns this
+// node's current peer list, so a newly-joining node learns about the rest
+// of the cluster in one request instead of needing every existing member
+// to reach out to it individually.
+func (hs *HTTPServer) handleInternalPeersJoin(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req PeerJoinRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil || req.Address == "" || req.Port == 0 {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+
+	peerID := req.Address + ":" + strconv.Itoa(req.Port)
+	if err := hs.coordinator.AddPeer(&core.Node{ID: peerID, Address: req.Address, Port: req.Port}); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	peers := hs.coordinator.GetPeers()
+	peerList := make([]map[string]interface{}, 0, len(peers))
+	for _, peer := range peers {
+		if peer.ID == peerID {
+			continue
+		}
+		peerList = append(peerList, map[string]interface{}{
+			"id":      peer.ID,
+			"address": peer.Address,
+			"port":    peer.Port,
+		})
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{"peers": peerList})
 }
 
 // ===== Job Queues =====

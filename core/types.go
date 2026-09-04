@@ -23,6 +23,12 @@ type Store interface {
 	Set(ctx context.Context, ns, key string, value []byte, ttl time.Duration) error
 	Close() error
 
+	// GetState and MergeState drive multi-node gossip replication of the
+	// rate limiter/replay-protection/cache CRDTs. See MeshStore's doc
+	// comments on these two methods for what is and isn't covered.
+	GetState() *MeshStoreState
+	MergeState(peer *MeshStoreState)
+
 	// Job Queues
 	Enqueue(ctx context.Context, queueName string, payload []byte, priority, maxRetries int, deadline time.Duration) (*queue.Job, error)
 	ClaimJob(ctx context.Context, queueName, workerID string) (*queue.Job, error)
@@ -140,4 +146,7 @@ type MeshStoreState struct {
 	RateLimiters     map[string]interface{}
 	ReplayProtection map[string]bool
 	Cache            map[string]map[string][]byte
+	// CacheTTL holds each cache entry's expiry as Unix millis, mirroring
+	// Cache's namespace/key shape. A zero or absent entry means no TTL.
+	CacheTTL map[string]map[string]int64
 }

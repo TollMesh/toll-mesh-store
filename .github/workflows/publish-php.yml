@@ -29,6 +29,6 @@ jobs:
 
       - name: Notify Packagist
         run: |
-          curl -XPOST https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }} \
+          curl -XPOST "https://packagist.org/api/update-package?username=${{ secrets.PACKAGIST_USERNAME }}&apiToken=${{ secrets.PACKAGIST_TOKEN }}" \
             -d '{"repository":{"url":"https://github.com/TollMesh/toll-mesh-store"}}'
         if: success()

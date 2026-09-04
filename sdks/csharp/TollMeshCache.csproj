@@ -27,6 +27,10 @@
     <PackageReference Include="Google.Protobuf" Version="3.22.0" Optional="true" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Include="README.md" Pack="true" PackagePath="\" />
+  </ItemGroup>
+
   <ItemGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'">
     <PackageReference Include="xunit" Version="2.6.0" />
     <PackageReference Include="xunit.runner.console" Version="2.6.0" />

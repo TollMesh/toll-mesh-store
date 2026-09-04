@@ -66,7 +66,7 @@ func (zs *SortedSet) Add(member string, score float64) error {
 			return nil
 		}
 		// New version wins, remove old and add new
-		zs.Members.Delete(member)
+		zs.Members.Delete(member, existing.Score)
 	}
 
 	// Add to skiplist and map
@@ -99,7 +99,7 @@ func (zs *SortedSet) Remove(member string) error {
 	existing.Node = zs.NodeID
 
 	// Remove from skiplist but keep in map (soft delete)
-	zs.Members.Delete(member)
+	zs.Members.Delete(member, existing.Score)
 
 	// Replicate tombstone
 	zs.replicateTombstone(existing)
@@ -130,7 +130,7 @@ func (zs *SortedSet) Rank(member string) (int64, bool) {
 		return 0, false
 	}
 
-	return zs.Members.Rank(member)
+	return zs.Members.Rank(member, m.Score)
 }
 
 // RevRank returns the reverse rank (from highest score)
@@ -143,7 +143,7 @@ func (zs *SortedSet) RevRank(member string) (int64, bool) {
 		return 0, false
 	}
 
-	rank, found := zs.Members.Rank(member)
+	rank, found := zs.Members.Rank(member, m.Score)
 	if !found {
 		return 0, false
 	}
@@ -254,9 +254,9 @@ func (zs *SortedSet) Merge(other *SortedSet) {
 				// Other version wins
 				zs.MemberMap[member] = otherMember
 				if otherMember.Tombstone {
-					zs.Members.Delete(member)
+					zs.Members.Delete(member, existing.Score)
 				} else {
-					zs.Members.Delete(member)
+					zs.Members.Delete(member, existing.Score)
 					zs.Members.Insert(member, otherMember.Score)
 				}
 			}

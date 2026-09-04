@@ -11,11 +11,17 @@ const (
 	P         = 0.5
 )
 
-// SkipListNode represents a node in the skip list
+// SkipListNode represents a node in the skip list. Span[i] is the number of
+// level-0 nodes traversed by following Forward[i] from this node -- e.g.
+// Span[0] is always 1 (immediate next node), while a higher-level Span
+// counts how many nodes that level's shortcut skips over. Spans are what
+// let Rank sum its way to a position in O(log n) instead of walking every
+// level-0 node.
 type SkipListNode struct {
 	Member   string
 	Score    float64
 	Forward  []*SkipListNode
+	Span     []int64
 	Backward *SkipListNode
 }
 
@@ -34,6 +40,7 @@ func NewSkipList() *SkipList {
 		Member:  "",
 		Score:   math.Inf(-1),
 		Forward: make([]*SkipListNode, MAX_LEVEL),
+		Span:    make([]int64, MAX_LEVEL),
 	}
 
 	return &SkipList{
@@ -41,6 +48,15 @@ func NewSkipList() *SkipList {
 		level:  1,
 		length: 0,
 	}
+}
+
+// less reports whether (scoreA, memberA) sorts strictly before (scoreB, memberB)
+// under this skip list's ordering: primarily by score, then by member.
+func less(scoreA float64, memberA string, scoreB float64, memberB string) bool {
+	if scoreA != scoreB {
+		return scoreA < scoreB
+	}
+	return memberA < memberB
 }
 
 // Insert adds or updates a member in the skip list
@@ -60,10 +76,8 @@ func (sl *SkipList) Insert(member string, score float64) bool {
 			rank[i] = rank[i+1]
 		}
 
-		for x.Forward[i] != nil &&
-			(x.Forward[i].Score < score ||
-				(x.Forward[i].Score == score && x.Forward[i].Member < member)) {
-			rank[i] += 1
+		for x.Forward[i] != nil && less(x.Forward[i].Score, x.Forward[i].Member, score, member) {
+			rank[i] += x.Span[i]
 			x = x.Forward[i]
 		}
 		update[i] = x
@@ -81,7 +95,9 @@ func (sl *SkipList) Insert(member string, score float64) bool {
 	// Expand header if needed
 	if level > sl.level {
 		for i := sl.level; i < level; i++ {
+			rank[i] = 0
 			update[i] = sl.header
+			update[i].Span[i] = sl.length
 		}
 		sl.level = level
 	}
@@ -91,6 +107,7 @@ func (sl *SkipList) Insert(member string, score float64) bool {
 		Member:  member,
 		Score:   score,
 		Forward: make([]*SkipListNode, level),
+		Span:    make([]int64, level),
 	}
 
 	// Update backward pointers
@@ -101,10 +118,19 @@ func (sl *SkipList) Insert(member string, score float64) bool {
 		x.Backward = update[0]
 	}
 
-	// Update forward pointers
+	// Update forward pointers and spans
 	for i := 0; i < level; i++ {
 		x.Forward[i] = update[i].Forward[i]
 		update[i].Forward[i] = x
+
+		x.Span[i] = update[i].Span[i] - (rank[0] - rank[i])
+		update[i].Span[i] = (rank[0] - rank[i]) + 1
+	}
+
+	// Levels above the new node's height that weren't touched by it still
+	// gained one more level-0 node underneath, so their span grows by one.
+	for i := level; i < sl.level; i++ {
+		update[i].Span[i]++
 	}
 
 	// Update tail pointer
@@ -125,8 +151,15 @@ func (sl *SkipList) Search(member string) (float64, bool) {
 	return sl.searchLocked(member)
 }
 
-// Delete removes a member from the skip list
-func (sl *SkipList) Delete(member string) bool {
+// Delete removes a member from the skip list. score must be the member's
+// current score (its callers already know it -- SortedSet keeps score in
+// MemberMap) since the list is ordered by (score, member) and descending it
+// correctly requires both. A member-only descent (as a prior version of
+// this method did) silently fails to find nodes whose member name doesn't
+// happen to sort the same way by name as by (score, member) -- e.g. with
+// scores alice=100, bob=50, the true order is [bob, alice] but member-only
+// comparison would look for "alice" before "bob" and never find it.
+func (sl *SkipList) Delete(member string, score float64) bool {
 	sl.mu.Lock()
 	defer sl.mu.Unlock()
 
@@ -134,21 +167,24 @@ func (sl *SkipList) Delete(member string) bool {
 
 	x := sl.header
 	for i := sl.level - 1; i >= 0; i-- {
-		for x.Forward[i] != nil && x.Forward[i].Member < member {
+		for x.Forward[i] != nil && less(x.Forward[i].Score, x.Forward[i].Member, score, member) {
 			x = x.Forward[i]
 		}
 		update[i] = x
 	}
 
 	x = x.Forward[0]
-	if x == nil || x.Member != member {
+	if x == nil || x.Member != member || x.Score != score {
 		return false
 	}
 
-	// Update backward/forward pointers
+	// Update forward pointers and spans
 	for i := 0; i < sl.level; i++ {
 		if update[i].Forward[i] == x {
+			update[i].Span[i] += x.Span[i] - 1
 			update[i].Forward[i] = x.Forward[i]
+		} else {
+			update[i].Span[i]--
 		}
 	}
 
@@ -239,25 +275,27 @@ func (sl *SkipList) RangeByRank(start, stop int64) []*SkipListNode {
 }
 
 // Rank returns the rank (0-based index in ascending score order) of a
-// member. Since the list is ordered by (score, member), the member's own
-// score is required to descend the list correctly, so it is looked up by
-// linear scan first.
-// Rank walks level 0 (a complete ordered linked list) rather than
-// descending multiple levels: a multi-level descent requires a per-pointer
-// "span" (number of level-0 nodes skipped) to count rank correctly, which
-// this skip list does not track, so counting +1 per hop at higher levels
-// silently undercounts. This makes Rank O(n) rather than O(log n); Insert,
-// Delete, and Range are unaffected and remain O(log n).
-func (sl *SkipList) Rank(member string) (int64, bool) {
+// member with the given score, in O(log n): it descends the list summing
+// each level's Span as it passes, rather than walking level 0 one node at a
+// time. score must be the member's current score (see Delete's comment for
+// why a member-only lookup can't correctly descend a list ordered by
+// (score, member)).
+func (sl *SkipList) Rank(member string, score float64) (int64, bool) {
 	sl.mu.RLock()
 	defer sl.mu.RUnlock()
 
 	var rank int64
-	for x := sl.header.Forward[0]; x != nil; x = x.Forward[0] {
-		if x.Member == member {
-			return rank, true
+	x := sl.header
+	for i := sl.level - 1; i >= 0; i-- {
+		for x.Forward[i] != nil &&
+			(x.Forward[i].Score < score ||
+				(x.Forward[i].Score == score && x.Forward[i].Member <= member)) {
+			rank += x.Span[i]
+			x = x.Forward[i]
 		}
-		rank++
+		if x != sl.header && x.Member == member && x.Score == score {
+			return rank - 1, true
+		}
 	}
 
 	return 0, false

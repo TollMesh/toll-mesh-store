@@ -39,7 +39,17 @@ func NewSortedSet(name string, nodeID string) *SortedSet {
 	}
 }
 
-// Add inserts or updates a member using CRDT rules
+// Add inserts or updates a member using CRDT rules. This is a local
+// mutation on this node -- its own Lamport clock is strictly increasing, so
+// it is always causally after whatever this node last wrote for member, and
+// is applied unconditionally (including lowering a score). compareMembers'
+// (score, timestamp, node) conflict resolution is for Merge, where two
+// different nodes' concurrent writes must be reconciled without a shared
+// causal order; it previously also gated Add, which meant any score
+// decrease from any caller -- even a completely ordinary sequential update
+// from this same node -- was silently dropped, since score is compared
+// before timestamp. Confirmed live: ZADD lowering a member's score from
+// 100 to 10 did nothing.
 func (zs *SortedSet) Add(member string, score float64) error {
 	zs.mu.Lock()
 	defer zs.mu.Unlock()
@@ -59,14 +69,13 @@ func (zs *SortedSet) Add(member string, score float64) error {
 	existing, exists := zs.MemberMap[member]
 
 	if exists {
-		// Conflict resolution: use composite key (score, timestamp, node)
-		cmp := zs.compareMembers(newMember, existing)
-		if cmp <= 0 {
-			// New version loses, keep existing
-			return nil
+		if existing.Score == score {
+			// No-op: same score already in place, nothing to move in the
+			// skip list. Still record the new timestamp/node below so
+			// Merge sees this as the latest write.
+		} else {
+			zs.Members.Delete(member, existing.Score)
 		}
-		// New version wins, remove old and add new
-		zs.Members.Delete(member, existing.Score)
 	}
 
 	// Add to skiplist and map

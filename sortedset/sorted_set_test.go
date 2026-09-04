@@ -35,6 +35,37 @@ func TestUpdateScore(t *testing.T) {
 	}
 }
 
+// TestAddCanLowerScore is a regression test: Add used to run every write
+// through compareMembers, which compares (score, timestamp, node) and
+// treats a lower score as a "losing" write regardless of timestamp -- so
+// this same node's own perfectly ordinary sequential score decrease was
+// silently dropped. Add is a local mutation with a strictly increasing
+// Lamport clock, so it should always apply; conflict resolution belongs to
+// Merge (reconciling a different node's concurrent write), not to a node's
+// own sequential updates.
+func TestAddCanLowerScore(t *testing.T) {
+	zs := NewSortedSet("test", "node-1")
+
+	zs.Add("player-1", 100.0)
+	zs.Add("player-1", 10.0)
+
+	score, exists := zs.Get("player-1")
+	if !exists {
+		t.Fatal("player-1 not found after lowering score")
+	}
+	if score != 10.0 {
+		t.Errorf("expected score lowered to 10.0, got %f", score)
+	}
+
+	rank, found := zs.Rank("player-1")
+	if !found || rank != 0 {
+		t.Errorf("expected player-1 at rank 0 after lowering score, got rank=%d found=%v", rank, found)
+	}
+	if zs.Card() != 1 {
+		t.Errorf("expected card=1 (no duplicate skip-list entry), got %d", zs.Card())
+	}
+}
+
 func TestRank(t *testing.T) {
 	zs := NewSortedSet("test", "node-1")
 

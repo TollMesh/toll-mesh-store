@@ -129,6 +129,8 @@ err := meshStore.Set(ctx, namespace, key, value, ttl)
 // Stores value with automatic TTL expiration
 ```
 
+The Go backend also implements Job Queues, Sorted Sets, Streams, Pub/Sub, Transactions, Persistence (WAL + snapshot), Pipelines, WASM Scripting (TinyGo-compiled Go, executed sandboxed via wazero), Search, Ranking, and Metrics, each exposed over HTTP and wired into every SDK — see the [API Reference](api-reference.md) for the HTTP-level contract of each.
+
 ## Testing
 
 ```bash

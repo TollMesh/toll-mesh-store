@@ -62,6 +62,8 @@ class Program {
 
 ## API Reference
 
+> This section covers rate limiting, replay protection, and caching. This SDK also has full, identical-API support for Job Queues, Sorted Sets, Streams, Pub/Sub, Transactions, Persistence, Pipelines, WASM Scripting, Search, Ranking, and Metrics — see the [full API Reference](api-reference.md) for all of them, with live-verified examples.
+
 ### Rate Limiting
 ```csharp
 var result = await client.ConsumeAsync(key, limit, window);

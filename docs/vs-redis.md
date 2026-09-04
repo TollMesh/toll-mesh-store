@@ -12,7 +12,7 @@ An honest comparison, current as of this project's actual tested state — not a
 
 ## What's Actually Verified Working
 
-These six capabilities are wired end-to-end (Go backend → HTTP API → all 7 SDKs) and have been run against a live server as part of building them:
+Fourteen capabilities are wired end-to-end (Go backend → HTTP API → all 7 SDKs) and have been run against a live server as part of building them:
 
 | Feature | TollMeshCache | Redis |
 |---------|---------------|-------|
@@ -22,31 +22,43 @@ These six capabilities are wired end-to-end (Go backend → HTTP API → all 7 S
 | Job queues | Yes (priority, retry, dead-letter) | Not built in (commonly layered on Streams or Lists) |
 | Sorted sets | Yes (skip list, CRDT conflict resolution) | Yes (skip list) |
 | Streams with consumer groups | Yes | Yes |
+| Pub/Sub | Yes (poll-based delivery, not a persistent connection) | Yes (`PUBLISH`/`SUBSCRIBE` over RESP) |
+| Transactions | Yes (queue ops, atomic commit/rollback) | Yes (`MULTI`/`EXEC`, no rollback on runtime errors) |
+| Persistence | Yes (WAL + snapshot, checksummed) | Yes (RDB + AOF, 15+ years battle-tested) |
+| Scripting | Yes — real arbitrary Go code, compiled by TinyGo to WASI WASM, executed in a sandboxed wazero runtime | Yes (Lua via `EVAL`) |
+| Search (BM25 + vector, hybrid) | Yes | No (requires RediSearch module) |
+| Ranking | Yes | No (build it yourself) |
+| Metrics (JSON + Prometheus) | Yes | Via `INFO` command or exporter |
 
-For all six, correctness is backed by real tests (Go unit tests for the backend, plus live HTTP integration tests for every SDK) — not just "it compiles."
+For all fourteen, correctness is backed by real tests (Go unit tests for the backend, plus live HTTP integration tests run against every SDK, not just "it compiles").
 
 ---
 
-## What Exists as Code But Isn't Usable Yet
+## Scripting: a genuinely different design from Redis, on purpose
 
-Pub/Sub, Transactions, Persistence, Lua Scripting, Search, Ranking, and Metrics all have Go packages in this repository — roughly 2,700 lines combined — but **none of them are connected to `MeshStore` or the HTTP API**, and **none have any test files**. This was the exact same problem Job Queues, Sorted Sets, and Streams had before this round of work: real code, zero way for any client to reach it, and (unlike those three) no tests proving the logic even works in isolation. If you see these listed as supported elsewhere in older docs, that was inaccurate — they are not usable from any SDK today.
+Redis scripting is Lua via `EVAL`/`EVALSHA`. This project deliberately does not depend on Redis or a Redis-derived component anywhere, including for scripting, so instead of embedding a Lua VM, a script here **is Go source code**: compiled server-side by the [TinyGo](https://tinygo.org) toolchain to a WASI WebAssembly module, then executed in a sandboxed [wazero](https://wazero.io) runtime (pure Go, no cgo), with a hard execution timeout and memory limit enforced per call.
+
+This mirrors the shape of Redis's `SCRIPT LOAD` + `EVALSHA` split — compile once (slow, real seconds, since it invokes an external compiler), execute many times (fast, single-digit milliseconds, since it reuses the already-compiled module) — but the execution surface is genuinely arbitrary Go, not a restricted scripting language, sandboxed by WASM isolation rather than a Lua interpreter's built-in restrictions. An infinite loop or any script exceeding its timeout is force-terminated without affecting the server process, other scripts, or other cached compiled modules.
+
+For cases that don't need arbitrary code — composing the server's own built-in operations (`get`, `set`, `zadd`, `enqueue`, ...) into a multi-step sequence — there's also a separate, simpler **Pipeline** primitive with no code-execution surface at all.
 
 ---
 
 ## Performance
 
-No benchmark has been run against this system. Any specific throughput or latency numbers you might see elsewhere in this project's history were not measured — they were invented, and have been removed. If performance is a factor in your decision, benchmark it yourself before relying on it; don't take anyone's word for it, including this document's.
+No formal benchmark suite has been run against this system. Any specific throughput or latency numbers you might see elsewhere in this project's history that aren't backed by a reproducible benchmark should not be trusted — if performance is a factor in your decision, benchmark it yourself before relying on it.
 
 What can be said honestly:
 - Every write goes through an HTTP round-trip (no persistent-connection or pipelining protocol yet), which puts a real floor under latency compared to Redis's RESP protocol.
 - `SortedSet.Rank`/`RevRank` are O(n) in the current implementation (a full skip-list "span" implementation, which is what makes Redis's `ZRANK` O(log n), was not completed — see the sortedset package for details). `Insert`, `Delete`, and range queries are O(log n).
-- Everything is in-memory with no durability path wired up (see Persistence, above) — a process restart loses all data. Redis has RDB/AOF persistence, battle-tested over 15+ years.
+- WASM script execution, once compiled, is fast (single-digit milliseconds observed live across all 7 SDKs) because the compiled module is cached and reused; compilation itself takes real seconds (TinyGo invokes an actual Go-to-WASM compiler process) and should be treated the same way you'd treat `SCRIPT LOAD` — infrequent, not on the hot path.
+- Persistence now exists (WAL + snapshot) but has not been benchmarked for recovery time or write-path overhead at scale. Redis's RDB/AOF persistence is battle-tested over 15+ years in production at massive scale; this project's persistence layer is new and comparatively unproven.
 
 ---
 
 ## Architecture
 
-**TollMeshCache**: peer-to-peer, CRDT-based. Each node holds full state; nodes gossip and merge via Lamport-clock conflict resolution. No coordinator, no leader election. This is a real, meaningful structural difference from Redis — but it has only been exercised in single-node tests in this codebase. Multi-node convergence (`coordination/state_sync.go`, `coordination/gossip.go`) exists and has its own test suite, but has not been verified end-to-end with the Job Queue/Sorted Set/Stream features layered on top of it — those features currently live entirely within a single `MeshStore` instance's in-memory maps, with no gossip replication wired to them specifically.
+**TollMeshCache**: peer-to-peer, CRDT-based. Each node holds full state; nodes gossip and merge via Lamport-clock conflict resolution. No coordinator, no leader election. This is a real, meaningful structural difference from Redis — but it has only been exercised in single-node tests in this codebase. Multi-node convergence (`coordination/state_sync.go`, `coordination/gossip.go`) exists and has its own test suite, but has not been verified end-to-end with the newer features layered on top of it — those features currently live entirely within a single `MeshStore` instance's in-memory maps (plus, for Persistence, its own WAL/snapshot files), with no gossip replication wired to them specifically.
 
 **Redis**: single-writer master with optional replicas, or Redis Cluster for horizontal scale via hash-slot sharding. Mature, well-understood failure modes, an enormous ecosystem (Sentinel, Cluster, modules, every major language's client libraries), and production deployments at massive scale.
 
@@ -54,8 +66,8 @@ What can be said honestly:
 
 ## Honest Verdict
 
-Redis is not being outperformed or outclassed here, and no credible claim to that effect should be made. Redis is a mature, extremely fast, heavily battle-tested system with a huge feature surface, and this project does not yet have persistence, pub/sub, transactions, or verified multi-node operation under real load.
+Redis is not being outperformed or outclassed here, and no credible claim to that effect should be made. Redis is a mature, extremely fast, heavily battle-tested system with a huge feature surface and 15+ years of production hardening. This project does not have verified multi-node operation under real load, a formal performance benchmark, or anywhere near Redis's operational track record.
 
-What TollMeshCache offers that's genuinely different: a peer-to-peer CRDT model with no central coordinator, and identical client APIs across 7 languages, for six specific capabilities (rate limiting, replay protection, caching, job queues, sorted sets, streams) that are now real and tested rather than aspirational.
+What TollMeshCache offers that's genuinely different: a peer-to-peer CRDT model with no central coordinator, real (not Lua-derived) arbitrary-code scripting via TinyGo/WASM sandboxing, and identical client APIs across 7 languages, for fourteen capabilities that are now wired end-to-end and tested rather than aspirational — including persistence, pub/sub, and transactions, which were previously listed here as "exists as code but isn't usable yet."
 
-Use TollMeshCache if the no-central-coordinator architecture specifically matters to your use case and you've verified the six supported features cover what you need. Use Redis for everything else, especially anything requiring persistence, pub/sub, transactions, high throughput, or a track record.
+Use TollMeshCache if the no-central-coordinator architecture or the WASM-sandboxed scripting model specifically matters to your use case, and you've verified the supported features cover what you need. Use Redis for anything requiring a proven production track record, multi-node operation at scale, or raw throughput.

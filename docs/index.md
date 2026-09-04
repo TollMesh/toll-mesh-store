@@ -70,6 +70,92 @@ Append-only event logs with consumer groups for reliable event processing and re
 
 ---
 
+### Pub/Sub
+Topic-based messaging with poll-based delivery — no persistent connection required.
+
+**Key Capabilities:**
+- Publish/subscribe with pattern-based topic filters
+- Poll-based delivery (works over plain HTTP, no socket/streaming needed)
+- Long-poll support for low-latency delivery without busy-waiting
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Transactions
+Multi-operation atomic commits — queue operations, then commit or roll back as a unit.
+
+**Key Capabilities:**
+- Atomic multi-operation commit
+- Explicit rollback
+- Transaction status tracking
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Persistence
+Write-ahead log plus point-in-time snapshots, for crash recovery.
+
+**Key Capabilities:**
+- Checksummed WAL entries
+- On-demand snapshotting of live CRDT state
+- Restore from latest snapshot
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Pipelines
+Safe composition of built-in operations into named, multi-step sequences — no code-execution surface.
+
+**Key Capabilities:**
+- Chain `get`/`set`/`zadd`/`zscore`/`enqueue`/`xadd` into one call
+- Pass a step's result into a later step
+- Register once, execute by name, or run one-off inline
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### WASM Scripting
+Real arbitrary-code execution — a script is Go source, compiled by TinyGo to WebAssembly and run sandboxed via wazero. Not a Redis-derived Lua VM; a genuinely different, from-scratch design.
+
+**Key Capabilities:**
+- Compile once, execute many times cheaply (mirrors Redis's `SCRIPT LOAD`/`EVALSHA`)
+- Hard execution timeout and memory limit per call, enforced by the sandbox
+- An infinite loop or runaway script is force-terminated without affecting the server or other scripts
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Search
+Hybrid lexical (BM25) and vector (cosine similarity) document search.
+
+**Key Capabilities:**
+- BM25 full-text search
+- Vector similarity search
+- Combined hybrid ranking
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Ranking
+Reorder result sets by strategy, with optional per-field score boosts.
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
+### Metrics
+Per-node operational metrics, in JSON or Prometheus text-exposition format.
+
+**Available in:** All 7 languages with identical APIs
+
+---
+
 ## Installation
 
 ### Python

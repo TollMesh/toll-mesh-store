@@ -50,6 +50,8 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
 
 ## API Reference
 
+> This section covers rate limiting, replay protection, and caching. This SDK also has full, identical-API support for Job Queues, Sorted Sets, Streams, Pub/Sub, Transactions, Persistence, Pipelines, WASM Scripting, Search, Ranking, and Metrics — see the [full API Reference](api-reference.md) for all of them, with live-verified examples.
+
 ### Rate Limiting
 ```rust
 let result = client.consume(key, limit, window).await?;

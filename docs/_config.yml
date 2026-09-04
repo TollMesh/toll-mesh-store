@@ -4,7 +4,7 @@ baseurl: /toll-mesh-store
 url: https://tollmesh.github.io
 repository: TollMesh/toll-mesh-store
 
-remote_theme: just-the-docs/just-the-docs
+remote_theme: just-the-docs/just-the-docs@v0.12.0
 
 color_scheme: dark
 
@@ -25,13 +25,19 @@ ga_measurement_id: ""
 # All .md files will be automatically discovered and ordered by nav_order
 
 # Markdown settings
+#
+# syntax_highlighter_opts.block.line_numbers was previously set to true.
+# Rouge's line-numbered output wraps code in a <table class="rouge-table">
+# layout, which Jekyll/kramdown then wraps in its own <pre>, producing
+# non-conforming double-wrapped HTML -- the theme's own (deprecated)
+# fix_linenos.html workaround documents this exact issue. In practice it
+# broke rendering on GitHub Pages' actual Jekyll/rouge build (literal text
+# like `class="highlight">` leaking into the page instead of being
+# consumed as an HTML attribute). Line numbers aren't worth that; removed.
 markdown: kramdown
 kramdown:
   input: GFM
   syntax_highlighter: rouge
-  syntax_highlighter_opts:
-    block:
-      line_numbers: true
 
 # Plugins
 plugins:

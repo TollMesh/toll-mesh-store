@@ -8,7 +8,7 @@ with open(readme_path, "r", encoding="utf-8") as fh:
 
 setup(
     name="tollmeshcache",
-    version="1.1.0",
+    version="1.1.1",
     author="TollMesh Team",
     author_email="team@tollmesh.io",
     description="Python SDK for TollMeshCache - Distributed CRDT-based caching",

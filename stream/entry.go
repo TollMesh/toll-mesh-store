@@ -2,6 +2,7 @@ package stream
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"time"
 )
@@ -59,8 +60,22 @@ func (s *Stream) Add(fields map[string]string) (*StreamEntry, error) {
 	s.Timestamp = time.Now().UnixMilli()
 	s.LastSequence++
 
-	// Generate entry ID: timestamp-sequence
-	entryID := fmt.Sprintf("%d-%d", s.Timestamp, s.LastSequence)
+	// Generate entry ID: timestamp-sequence-node. The node suffix is what
+	// makes this globally unique across a cluster, not just within this
+	// one Stream instance: LastSequence is a plain per-instance counter
+	// that any two nodes' independent Stream objects for the same stream
+	// name both start at 0 and increment on their own, with no
+	// coordination between them. Two nodes producing entries in the same
+	// millisecond (easy under any real write volume) previously could
+	// produce the exact same "<timestamp>-<sequence>" ID for two
+	// completely different entries -- fine for a single node, but fatal
+	// for a union-merge across nodes, since it's exactly the identity a
+	// merge would use to decide "have I already seen this entry?". No
+	// code parses this ID's structure (confirmed via a repo-wide search
+	// before making this change) -- every use is an opaque string
+	// equality/map-key lookup -- so widening the format doesn't break
+	// existing Range/EntryIndex behavior.
+	entryID := fmt.Sprintf("%d-%d-%s", s.Timestamp, s.LastSequence, s.NodeID)
 
 	entry := &StreamEntry{
 		ID:        entryID,
@@ -140,6 +155,64 @@ func (s *Stream) Range(startID, endID string, limit int64) []*StreamEntry {
 	}
 
 	return result
+}
+
+// Snapshot returns a copy of every entry, for gossip replication.
+func (s *Stream) Snapshot() []StreamEntry {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	out := make([]StreamEntry, len(s.Entries))
+	for i, e := range s.Entries {
+		out[i] = *e
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output. Since entries are
+// immutable once appended and IDs are globally unique (see Add's comment
+// on why the ID includes the node), merging is a straightforward set
+// union keyed by ID -- no per-entry conflict resolution is needed the way
+// cache's LWW-register or SortedSet's (score, timestamp, node) comparison
+// are, since two entries can never legitimately compete to be "the same"
+// entry. The one thing merging must get right is ordering: Range and
+// GetFirst/GetLast are positional over s.Entries, not derived from the ID,
+// so newly-merged entries (which can be chronologically "in the past"
+// relative to this node's own more recent local entries) are inserted in
+// the correct position by re-sorting on (Timestamp, Sequence, Node),
+// rather than simply appended.
+func (s *Stream) MergeSnapshot(entries []StreamEntry) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	changed := false
+	for i := range entries {
+		e := &entries[i]
+		if _, exists := s.EntryIndex[e.ID]; exists {
+			continue
+		}
+		entryCopy := *e
+		s.Entries = append(s.Entries, &entryCopy)
+		s.EntryIndex[e.ID] = &entryCopy
+		changed = true
+	}
+
+	if !changed {
+		return
+	}
+
+	sort.Slice(s.Entries, func(i, j int) bool {
+		a, b := s.Entries[i], s.Entries[j]
+		if a.Timestamp != b.Timestamp {
+			return a.Timestamp < b.Timestamp
+		}
+		if a.Sequence != b.Sequence {
+			return a.Sequence < b.Sequence
+		}
+		return a.Node < b.Node
+	})
+
+	s.applyRetention()
 }
 
 // Len returns total number of entries

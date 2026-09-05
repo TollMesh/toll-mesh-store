@@ -151,7 +151,7 @@ Append-only event logs with consumer-group coordination.
 
 ### `xadd(stream, fields)`
 
-`POST /stream/add` — append an entry. Returns the created entry: `{ id, timestamp, fields, node, sequence }`. IDs are `<timestamp>-<sequence>`, strictly increasing.
+`POST /stream/add` — append an entry. Returns the created entry: `{ id, timestamp, fields, node, sequence }`. IDs are `<timestamp>-<sequence>-<node>`, strictly increasing within a single node's own writes to the stream; the node suffix is what makes an ID globally unique across a cluster (needed for stream replication — see [vs Redis](vs-redis.md)), not just unique within one node's local counter. Treat IDs as opaque tokens for `xrange`'s `start`/`end` cursors, not something to parse.
 
 ```python
 entry = client.xadd('events', {'type': 'login', 'user': 'alice'})

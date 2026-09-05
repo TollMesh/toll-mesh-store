@@ -169,4 +169,13 @@ type MeshStoreState struct {
 	// primitives to gain gossip replication; see architecture.md for which
 	// of the other ten still don't.
 	SortedSets map[string][]sortedset.SortedSetMember
+
+	// Streams holds every replicated stream's full entry snapshot (via
+	// stream.Stream.Snapshot), keyed by stream name. Merging (Stream.
+	// MergeSnapshot) is a plain set union keyed by entry ID -- unlike
+	// SortedSets or Cache, stream entries are immutable once appended and
+	// their IDs are globally unique (see stream.Stream.Add's doc comment),
+	// so there is no per-entry conflict to resolve, only "have we seen
+	// this ID yet".
+	Streams map[string][]stream.StreamEntry
 }

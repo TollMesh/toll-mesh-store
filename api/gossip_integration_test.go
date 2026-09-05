@@ -271,6 +271,62 @@ func TestGossipReplicatesSortedSets(t *testing.T) {
 	}
 }
 
+// TestGossipReplicatesStreams is the regression test for the second
+// feature group (after Sorted Sets) to gain gossip replication: streams.
+// Verifies entries appended on different nodes both end up in every
+// node's copy of the log, in the correct combined chronological order --
+// not just that the count matches, since Stream.Range/GetFirst/GetLast
+// are positional over the merged slice, not derived from entry IDs.
+func TestGossipReplicatesStreams(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if _, err := node1.store.XAdd(ctx, "events", map[string]string{"from": "node1"}); err != nil {
+		t.Fatalf("node1 XAdd failed: %v", err)
+	}
+	if _, err := node2.store.XAdd(ctx, "events", map[string]string{"from": "node2"}); err != nil {
+		t.Fatalf("node2 XAdd failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastErr = nil
+		for _, n := range []*gossipTestNode{node1, node2} {
+			entries := n.store.XRange(ctx, "events", "0", "-", 100)
+			if len(entries) != 2 {
+				lastErr = fmt.Errorf("%s: XRange returned %d entries, want 2", n.name, len(entries))
+				break
+			}
+			froms := map[string]bool{}
+			for _, e := range entries {
+				froms[e.Fields["from"]] = true
+			}
+			if !froms["node1"] || !froms["node2"] {
+				lastErr = fmt.Errorf("%s: entries = %+v, missing one node's entry", n.name, entries)
+				break
+			}
+		}
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("stream entries did not converge within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

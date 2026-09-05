@@ -912,6 +912,13 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	}
 	ms.zsetsMu.RUnlock()
 
+	ms.streamsMu.RLock()
+	streams := make(map[string][]stream.StreamEntry, len(ms.streams))
+	for name, s := range ms.streams {
+		streams[name] = s.Snapshot()
+	}
+	ms.streamsMu.RUnlock()
+
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
@@ -920,6 +927,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		CacheTimestamp:   cacheTimestampCopy,
 		CacheNode:        cacheNodeCopy,
 		SortedSets:       sortedSets,
+		Streams:          streams,
 	}
 }
 
@@ -1016,6 +1024,10 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	// wire-format member list gossip actually carries.
 	for name, members := range peer.SortedSets {
 		ms.getOrCreateZSet(name).MergeSnapshot(members)
+	}
+
+	for name, entries := range peer.Streams {
+		ms.getOrCreateStream(name).MergeSnapshot(entries)
 	}
 }
 

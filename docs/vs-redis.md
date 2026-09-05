@@ -32,6 +32,8 @@ Fourteen capabilities are wired end-to-end (Go backend → HTTP API → all 7 SD
 
 For all fourteen, correctness is backed by real tests (Go unit tests for the backend, plus live HTTP integration tests run against every SDK, not just "it compiles").
 
+**Authentication is real too, as of a security review this session** — worth calling out on its own, since it wasn't true for most of this project's history. Every SDK has sent an `X-API-Key` header since it was written, but the server never checked it: every request succeeded regardless of whether a key was sent or correct. Fixed — see [API Reference: Authentication](api-reference.md#authentication) — and while fixing it, found and fixed four SDKs that couldn't actually have authenticated even if the server had been checking: Rust and Java accepted an `api_key` config value and silently never sent it anywhere, and PHP only sent it on POST requests, never GET (so `cache_get`, `health`, and every other read-only call went out unauthenticated). All 7 SDKs are now live-verified end-to-end against a real server with an API key enabled.
+
 ---
 
 ## Scripting: a genuinely different design from Redis, on purpose

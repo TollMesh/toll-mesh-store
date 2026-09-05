@@ -402,6 +402,14 @@ The Job Queue, Sorted Set, Stream, Pub/Sub, Transactions, Persistence, Pipelines
 
 ---
 
+## Authentication
+
+Every SDK's `api_key` config option is enforced server-side: start the server with `-api-key <key>` (or set `TOLLMESH_API_KEY` — preferred, since a flag value is visible to anyone who can list processes on the host) and every request must include a matching `X-API-Key` header, or it gets rejected with `401 UNAUTHORIZED`. `GET /health` stays open even with an API key configured, for basic monitoring/load-balancer checks. Leaving `-api-key`/`TOLLMESH_API_KEY` unset (the default) leaves the server open, matching every SDK's `api_key: None`/`null` default — this is an opt-in feature, not on by default.
+
+Node-to-node gossip (`/internal/state`, `/internal/peers/join`) uses a **separate** credential: `-cluster-secret`/`TOLLMESH_CLUSTER_SECRET`, checked via `X-Cluster-Secret` rather than `X-API-Key`. An SDK's API key does not grant access to `/internal/*`, and a cluster secret does not grant access to the SDK-facing endpoints — these are deliberately different trust boundaries (an application talking to the cache vs. a peer node joining the cluster), so a leaked API key can't be used to manipulate cluster membership. Every node in a cluster must be started with the same `-cluster-secret` for gossip between them to keep working once it's set.
+
+---
+
 ## Configuration Options
 
 ### Common to All SDKs

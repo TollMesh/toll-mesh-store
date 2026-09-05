@@ -181,6 +181,58 @@ func TestConcurrentExecutionsAreSerialized(t *testing.T) {
 	}
 }
 
+// TestMergeSnapshotAdoptsNewerPeerPipeline is the regression test for
+// pipeline gossip replication: MergeSnapshot must adopt a peer's pipeline
+// only when it's strictly newer (by Created, then Node), the same
+// LWW-register rule as cache -- and must not replace a local pipeline
+// with an older or exactly-equal-version peer copy.
+func TestMergeSnapshotAdoptsNewerPeerPipeline(t *testing.T) {
+	e := newTestEngine()
+	if err := e.RegisterPipeline(&Pipeline{
+		Name:  "greet",
+		Steps: []Step{{Op: "echo", Args: map[string]interface{}{"value": "local"}}},
+		Node:  "node-1",
+	}); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+	local, _ := e.GetPipeline("greet")
+	localCreated := local.Created
+
+	// An older peer version must not overwrite the newer local one.
+	e.MergeSnapshot([]Pipeline{{
+		Name:    "greet",
+		Steps:   []Step{{Op: "echo", Args: map[string]interface{}{"value": "stale-peer"}}},
+		Node:    "node-2",
+		Created: localCreated - 1000,
+	}})
+	if p, _ := e.GetPipeline("greet"); p.Steps[0].Args["value"] != "local" {
+		t.Fatalf("older peer pipeline was incorrectly adopted: %+v", p)
+	}
+
+	// A newer peer version must overwrite the local one.
+	e.MergeSnapshot([]Pipeline{{
+		Name:    "greet",
+		Steps:   []Step{{Op: "echo", Args: map[string]interface{}{"value": "newer-peer"}}},
+		Node:    "node-2",
+		Created: localCreated + 1000,
+	}})
+	if p, _ := e.GetPipeline("greet"); p.Steps[0].Args["value"] != "newer-peer" {
+		t.Fatalf("newer peer pipeline was not adopted: %+v", p)
+	}
+
+	// A brand-new pipeline name (not present locally at all) must always
+	// be adopted regardless of version.
+	e.MergeSnapshot([]Pipeline{{
+		Name:    "farewell",
+		Steps:   []Step{{Op: "echo", Args: map[string]interface{}{"value": "bye"}}},
+		Node:    "node-2",
+		Created: 1,
+	}})
+	if _, err := e.GetPipeline("farewell"); err != nil {
+		t.Fatalf("new pipeline from peer was not adopted: %v", err)
+	}
+}
+
 func TestGetStats(t *testing.T) {
 	e := newTestEngine()
 	e.RegisterPipeline(&Pipeline{Name: "p1", Steps: []Step{{Op: "echo", Args: map[string]interface{}{"value": "x"}}}})

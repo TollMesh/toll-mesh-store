@@ -178,4 +178,12 @@ type MeshStoreState struct {
 	// so there is no per-entry conflict to resolve, only "have we seen
 	// this ID yet".
 	Streams map[string][]stream.StreamEntry
+
+	// Pipelines holds every registered pipeline (via scripting.Engine.
+	// Snapshot), keyed by nothing -- each scripting.Pipeline already
+	// carries its own Name. Merging (Engine.MergeSnapshot) is a
+	// (Created, Node) LWW-register comparison per pipeline name, the same
+	// pattern as Cache. Known limitation: pipeline deletion does not
+	// replicate (see MergeSnapshot's doc comment).
+	Pipelines []scripting.Pipeline
 }

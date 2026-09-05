@@ -12,6 +12,7 @@ import (
 
 	"github.com/toll-mesh/store/coordination"
 	"github.com/toll-mesh/store/core"
+	"github.com/toll-mesh/store/scripting"
 	"github.com/toll-mesh/store/store"
 )
 
@@ -324,6 +325,62 @@ func TestGossipReplicatesStreams(t *testing.T) {
 	}
 	if lastErr != nil {
 		t.Fatalf("stream entries did not converge within deadline: %v", lastErr)
+	}
+}
+
+// TestGossipReplicatesPipelines is the regression test for the third
+// feature group to gain gossip replication: pipelines. Verifies a
+// pipeline registered on one node becomes executable on the other once
+// gossip converges -- not just that the definition arrives, but that it's
+// installed correctly enough to actually run (validated against the
+// receiving node's own handler set, per MergeSnapshot's doc comment).
+func TestGossipReplicatesPipelines(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	pipeline := &scripting.Pipeline{
+		Name: "seed-user",
+		Steps: []scripting.Step{
+			{Op: "set", Args: map[string]interface{}{"namespace": "users", "key": "alice", "value": "seeded"}},
+		},
+	}
+	if err := node1.store.RegisterPipeline(ctx, pipeline); err != nil {
+		t.Fatalf("node1 RegisterPipeline failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		if _, err := node2.store.GetPipeline(ctx, "seed-user"); err == nil {
+			lastErr = nil
+			break
+		} else {
+			lastErr = err
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("pipeline did not converge to node2 within deadline: %v", lastErr)
+	}
+
+	// Not just present -- actually executable on the node that only
+	// learned about it via gossip.
+	if _, err := node2.store.ExecutePipeline(ctx, "seed-user"); err != nil {
+		t.Fatalf("node2 ExecutePipeline(seed-user) failed: %v", err)
+	}
+	value, exists, err := node2.store.Get(ctx, "users", "alice")
+	if err != nil || !exists || string(value) != "seeded" {
+		t.Fatalf("node2 users/alice = %q exists=%v err=%v after executing the gossiped pipeline, want \"seeded\"", value, exists, err)
 	}
 }
 

@@ -919,6 +919,11 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	}
 	ms.streamsMu.RUnlock()
 
+	// scripting.Engine has its own internal mutex, so this needs no
+	// additional locking here (unlike zsets/streams, which are plain maps
+	// MeshStore itself protects with zsetsMu/streamsMu).
+	pipelines := ms.pipelines.Snapshot()
+
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
@@ -928,6 +933,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		CacheNode:        cacheNodeCopy,
 		SortedSets:       sortedSets,
 		Streams:          streams,
+		Pipelines:        pipelines,
 	}
 }
 
@@ -1029,6 +1035,8 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	for name, entries := range peer.Streams {
 		ms.getOrCreateStream(name).MergeSnapshot(entries)
 	}
+
+	ms.pipelines.MergeSnapshot(peer.Pipelines)
 }
 
 // cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,
@@ -1076,6 +1084,7 @@ func decodeGCounterSnapshot(raw interface{}) map[string]int {
 
 // RegisterPipeline registers a named pipeline for later execution by name.
 func (ms *MeshStore) RegisterPipeline(ctx context.Context, p *scripting.Pipeline) error {
+	p.Node = ms.config.NodeName
 	return ms.pipelines.RegisterPipeline(p)
 }
 

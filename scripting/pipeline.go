@@ -26,11 +26,17 @@ type Step struct {
 	SaveAs string                 `json:"save_as,omitempty"`
 }
 
-// Pipeline is a named, ordered sequence of Steps.
+// Pipeline is a named, ordered sequence of Steps. Created doubles as this
+// pipeline's LWW-register version for gossip replication (RegisterPipeline
+// re-stamps it on every registration, not just the first) -- Node is the
+// registering node's ID, breaking ties between two nodes registering the
+// same pipeline name in the same millisecond, the same pattern as cache's
+// merge.
 type Pipeline struct {
 	Name       string `json:"name"`
 	Steps      []Step `json:"steps"`
 	Created    int64  `json:"created"`
+	Node       string `json:"node,omitempty"`
 	Executions int64  `json:"executions"`
 	LastError  string `json:"last_error,omitempty"`
 }
@@ -125,6 +131,70 @@ func (e *Engine) ListPipelines() []*Pipeline {
 		pipelines = append(pipelines, p)
 	}
 	return pipelines
+}
+
+// Snapshot returns a copy of every registered pipeline, for gossip
+// replication.
+func (e *Engine) Snapshot() []Pipeline {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	out := make([]Pipeline, 0, len(e.pipelines))
+	for _, p := range e.pipelines {
+		out = append(out, *p)
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: a (Created, Node)
+// LWW-register comparison per pipeline name, the same pattern as cache's
+// merge -- the peer's pipeline is adopted only when it's strictly newer.
+//
+// Known limitation, not solved here: DeletePipeline is a hard local
+// delete with no tombstone, unlike cache (no delete at all) or Sorted
+// Sets (tombstoned deletes that do replicate). A pipeline deleted on one
+// node will be silently re-introduced by the next gossip round from any
+// peer that still has it -- deletion does not replicate, only
+// registration/update does.
+func (e *Engine) MergeSnapshot(pipelines []Pipeline) {
+	e.mu.Lock()
+	defer e.mu.Unlock()
+
+	for i := range pipelines {
+		peer := &pipelines[i]
+
+		local, exists := e.pipelines[peer.Name]
+		if exists && !pipelineLess(local.Created, local.Node, peer.Created, peer.Node) {
+			continue
+		}
+
+		// Every node registers the same fixed set of handlers at
+		// startup (see MeshStore.registerPipelineHandlers), so this
+		// should always pass in practice -- guarding it anyway rather
+		// than installing a pipeline this node has no way to execute.
+		valid := true
+		for _, step := range peer.Steps {
+			if _, ok := e.handlers[step.Op]; !ok {
+				valid = false
+				break
+			}
+		}
+		if !valid {
+			continue
+		}
+
+		peerCopy := *peer
+		e.pipelines[peer.Name] = &peerCopy
+	}
+}
+
+// pipelineLess reports whether (createdA, nodeA) sorts strictly before
+// (createdB, nodeB) in the pipeline LWW-register's version order.
+func pipelineLess(createdA int64, nodeA string, createdB int64, nodeB string) bool {
+	if createdA != createdB {
+		return createdA < createdB
+	}
+	return nodeA < nodeB
 }
 
 // DeletePipeline removes a registered pipeline.

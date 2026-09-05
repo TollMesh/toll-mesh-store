@@ -34,7 +34,7 @@ This replaces what used to be here: for most of this project's history, `perform
 
 ## Storage layout
 
-Each node's live state is entirely in-memory (Go maps and the CRDT types above), guarded by `sync.RWMutex`. Durability is opt-in via the Persistence feature: a checksummed write-ahead log records every mutating operation as it happens, and `create_snapshot` captures a full point-in-time copy of CRDT state to disk that a future `restore_from_latest_snapshot` can replay from — see [API Reference: Persistence](api-reference.md#persistence). Without ever calling those, a process restart loses all data; this is not automatic.
+Each node's live state is entirely in-memory (Go maps and the CRDT types above), guarded by `sync.RWMutex`. Every successful rate-limit consume, replay-protection check, and cache write now logs to a write-ahead log automatically — no explicit call needed — and a new process recovers automatically on startup: it loads the most recent snapshot (if any) and replays every WAL entry logged after it, reconstructing state exactly as it was before the process stopped, including a hard crash (`SIGKILL`, no graceful shutdown), which is the case this has actually been verified against. `create_snapshot` remains available to explicitly compact the WAL into a point-in-time snapshot — see [API Reference: Persistence](api-reference.md#persistence) — but it is no longer the only thing standing between a restart and total data loss for these three primitives. The eight newer feature groups (Job Queues, Sorted Sets, Streams, Pub/Sub, Transactions, Pipelines, WASM Scripting, Search, Ranking, Metrics) are not covered by this at all and still lose all state on restart.
 
 ## Sandboxed scripting
 

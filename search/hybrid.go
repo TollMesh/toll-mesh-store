@@ -8,13 +8,16 @@ import (
 	"time"
 )
 
-// Document represents a searchable document
+// Document represents a searchable document. Timestamp/Node are this
+// document's LWW-register version for gossip replication -- previously
+// Timestamp existed but was never actually set by any caller.
 type Document struct {
 	ID        string
 	Content   string
 	Metadata  map[string]interface{}
 	Vector    []float32
 	Timestamp int64
+	Node      string
 }
 
 // SearchResult represents a search result with score
@@ -311,6 +314,55 @@ func (hse *HybridSearchEngine) DeleteDocument(docID string) error {
 }
 
 // GetStats returns search engine statistics
+// Snapshot returns a copy of every indexed document, for gossip
+// replication.
+func (hse *HybridSearchEngine) Snapshot() []Document {
+	hse.bm25.mu.RLock()
+	defer hse.bm25.mu.RUnlock()
+
+	out := make([]Document, 0, len(hse.bm25.documents))
+	for _, d := range hse.bm25.documents {
+		out = append(out, *d)
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: a (Timestamp, Node)
+// LWW-register comparison per document ID, the same pattern as Cache and
+// Pipelines -- a peer's document is adopted only when it's strictly newer.
+// Adopting it goes through IndexDocument, not a direct map write, so the
+// BM25 bookkeeping (deindexBM25Locked-then-reindex) stays correct.
+//
+// Known limitation, not solved here: DeleteDocument is a hard local
+// delete with no tombstone, like Pipelines and unlike Sorted Sets/Streams.
+// A document deleted on one node will be silently re-introduced by the
+// next gossip round from any peer that still has it.
+func (hse *HybridSearchEngine) MergeSnapshot(docs []Document) {
+	for i := range docs {
+		peer := &docs[i]
+
+		hse.bm25.mu.RLock()
+		local, exists := hse.bm25.documents[peer.ID]
+		hse.bm25.mu.RUnlock()
+
+		if exists && !documentLess(local.Timestamp, local.Node, peer.Timestamp, peer.Node) {
+			continue
+		}
+
+		peerCopy := *peer
+		hse.IndexDocument(&peerCopy)
+	}
+}
+
+// documentLess reports whether (tsA, nodeA) sorts strictly before (tsB,
+// nodeB) in the document LWW-register's version order.
+func documentLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
+	if tsA != tsB {
+		return tsA < tsB
+	}
+	return nodeA < nodeB
+}
+
 func (hse *HybridSearchEngine) GetStats() map[string]interface{} {
 	hse.bm25.mu.RLock()
 	bm25Count := len(hse.bm25.documents)

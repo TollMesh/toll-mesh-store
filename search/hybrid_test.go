@@ -69,6 +69,38 @@ func TestReindexingSameIDDoesNotDoubleCount(t *testing.T) {
 	}
 }
 
+// TestMergeSnapshotAdoptsNewerPeerDocument is the regression test for
+// search gossip replication: MergeSnapshot must adopt a peer's document
+// only when it's strictly newer (by Timestamp, then Node), the same
+// LWW-register rule as Cache and Pipelines -- and must not corrupt BM25
+// stats when it does (verified by searching after the merge, not just
+// checking the raw document).
+func TestMergeSnapshotAdoptsNewerPeerDocument(t *testing.T) {
+	hse := NewHybridSearchEngine()
+	hse.IndexDocument(&Document{ID: "doc1", Content: "local content", Timestamp: 1000, Node: "node-1"})
+
+	// An older peer version must not overwrite the newer local one.
+	hse.MergeSnapshot([]Document{{ID: "doc1", Content: "stale peer content", Timestamp: 500, Node: "node-2"}})
+	if results := hse.SearchBM25("local", 10); len(results) == 0 || results[0].Document.Content != "local content" {
+		t.Fatalf("older peer document was incorrectly adopted, search results: %+v", results)
+	}
+
+	// A newer peer version must overwrite the local one, and searching
+	// for the new content must actually find it (proving BM25 was
+	// correctly re-indexed, not just the raw document map updated).
+	hse.MergeSnapshot([]Document{{ID: "doc1", Content: "newer peer content", Timestamp: 2000, Node: "node-2"}})
+	results := hse.SearchBM25("newer peer content", 10)
+	if len(results) == 0 || results[0].Document.ID != "doc1" {
+		t.Fatalf("newer peer document was not adopted/indexed correctly, search results: %+v", results)
+	}
+	// "local" only appears in the old, now-overwritten content -- "content"
+	// itself is a shared term with the new text, so searching for that
+	// alone wouldn't prove anything.
+	if results := hse.SearchBM25("local", 10); len(results) != 0 {
+		t.Fatalf("old content still searchable after being overwritten by a newer peer document: %+v", results)
+	}
+}
+
 func TestSearchAfterDeleteDoesNotCrashOrReturnDeletedDoc(t *testing.T) {
 	hse := NewHybridSearchEngine()
 	hse.IndexDocument(&Document{ID: "1", Content: "unique searchable term"})

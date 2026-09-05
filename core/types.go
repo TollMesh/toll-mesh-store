@@ -186,4 +186,11 @@ type MeshStoreState struct {
 	// pattern as Cache. Known limitation: pipeline deletion does not
 	// replicate (see MergeSnapshot's doc comment).
 	Pipelines []scripting.Pipeline
+
+	// SearchDocuments holds every indexed document (via search.
+	// HybridSearchEngine.Snapshot). Merging (MergeSnapshot) is a
+	// (Timestamp, Node) LWW-register comparison per document ID, the same
+	// pattern as Cache and Pipelines. Known limitation: document deletion
+	// does not replicate (see MergeSnapshot's doc comment).
+	SearchDocuments []search.Document
 }

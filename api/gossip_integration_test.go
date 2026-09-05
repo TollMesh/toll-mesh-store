@@ -13,6 +13,7 @@ import (
 	"github.com/toll-mesh/store/coordination"
 	"github.com/toll-mesh/store/core"
 	"github.com/toll-mesh/store/scripting"
+	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/store"
 )
 
@@ -381,6 +382,44 @@ func TestGossipReplicatesPipelines(t *testing.T) {
 	value, exists, err := node2.store.Get(ctx, "users", "alice")
 	if err != nil || !exists || string(value) != "seeded" {
 		t.Fatalf("node2 users/alice = %q exists=%v err=%v after executing the gossiped pipeline, want \"seeded\"", value, exists, err)
+	}
+}
+
+// TestGossipReplicatesSearchDocuments is the regression test for the
+// fourth feature group to gain gossip replication: search. Verifies a
+// document indexed on one node becomes searchable from the other once
+// gossip converges.
+func TestGossipReplicatesSearchDocuments(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if err := node1.store.IndexDocument(ctx, &search.Document{ID: "doc1", Content: "distributed cache with crdt conflict resolution"}); err != nil {
+		t.Fatalf("node1 IndexDocument failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		results := node2.store.SearchBM25(ctx, "crdt", 10)
+		if len(results) > 0 && results[0].Document.ID == "doc1" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 SearchBM25(\"crdt\") = %+v, want doc1 to be found", results)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("search document did not converge to node2 within deadline: %v", lastErr)
 	}
 }
 

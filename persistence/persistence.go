@@ -36,6 +36,13 @@ type WALEntry struct {
 	Key       string      `json:"key"`
 	Value     interface{} `json:"value,omitempty"`
 	Namespace string      `json:"namespace,omitempty"`
+	// ExpiresAt is the entry's absolute expiry (Unix millis), for "set"
+	// entries with a TTL. Storing the absolute time rather than a
+	// duration means replaying this entry long after it was written still
+	// produces the correct expiry -- including correctly producing an
+	// already-expired entry, which callers already treat as absent.
+	// Zero means no expiration.
+	ExpiresAt int64 `json:"expires_at,omitempty"`
 }
 
 // NewPersistenceEngine creates a new persistence engine
@@ -69,8 +76,10 @@ func NewPersistenceEngine(walPath, snapshotPath string, snapshotInterval time.Du
 	return pe, nil
 }
 
-// LogOperation writes an operation to the WAL
-func (pe *PersistenceEngine) LogOperation(op string, key string, value interface{}, namespace string) error {
+// LogOperation writes an operation to the WAL. expiresAt is the entry's
+// absolute expiry in Unix millis (0 for no expiration); it's only
+// meaningful for "set".
+func (pe *PersistenceEngine) LogOperation(op string, key string, value interface{}, namespace string, expiresAt int64) error {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
@@ -80,6 +89,7 @@ func (pe *PersistenceEngine) LogOperation(op string, key string, value interface
 		Key:       key,
 		Value:     value,
 		Namespace: namespace,
+		ExpiresAt: expiresAt,
 	}
 
 	data, err := json.Marshal(entry)

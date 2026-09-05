@@ -14,10 +14,10 @@ func TestLogOperationAndReplayWAL(t *testing.T) {
 	}
 	defer pe.Close()
 
-	if err := pe.LogOperation("set", "key1", []byte("value1"), "ns1"); err != nil {
+	if err := pe.LogOperation("set", "key1", []byte("value1"), "ns1", 0); err != nil {
 		t.Fatalf("log operation failed: %v", err)
 	}
-	if err := pe.LogOperation("set", "key2", []byte("value2"), "ns1"); err != nil {
+	if err := pe.LogOperation("set", "key2", []byte("value2"), "ns1", 0); err != nil {
 		t.Fatalf("log operation failed: %v", err)
 	}
 
@@ -41,10 +41,10 @@ func TestReplayWALFiltersOldEntries(t *testing.T) {
 	}
 	defer pe.Close()
 
-	pe.LogOperation("set", "key1", []byte("value1"), "ns1")
+	pe.LogOperation("set", "key1", []byte("value1"), "ns1", 0)
 	cutoff := time.Now().UnixMilli()
 	time.Sleep(5 * time.Millisecond)
-	pe.LogOperation("set", "key2", []byte("value2"), "ns1")
+	pe.LogOperation("set", "key2", []byte("value2"), "ns1", 0)
 
 	entries, err := pe.ReplayWAL(cutoff)
 	if err != nil {

@@ -101,8 +101,82 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 
 	ms.registerPipelineHandlers()
 
+	if err := ms.recoverFromDisk(); err != nil {
+		return nil, fmt.Errorf("failed to recover persisted state: %w", err)
+	}
+
 	go ms.backgroundCleanup()
 	return ms, nil
+}
+
+// recoverFromDisk restores state left by a previous run, if any: the most
+// recent snapshot (if one exists), then every WAL entry written after that
+// snapshot was taken (or, if there's no snapshot at all, every WAL entry
+// ever written). This runs once at startup before the server accepts any
+// traffic, so replaying the WAL from a blank starting point and reapplying
+// every logged operation in order is exactly correct -- there is no
+// "already applied" state to double-apply on top of.
+func (ms *MeshStore) recoverFromDisk() error {
+	snap, err := ms.persistence.LoadLatestSnapshot()
+	if err != nil {
+		return fmt.Errorf("loading latest snapshot: %w", err)
+	}
+
+	var afterTimestamp int64
+	if snap != nil {
+		ms.mu.Lock()
+		ms.applySnapshotLocked(snap)
+		ms.mu.Unlock()
+		afterTimestamp = snap.Timestamp
+	}
+
+	entries, err := ms.persistence.ReplayWAL(afterTimestamp)
+	if err != nil {
+		return fmt.Errorf("replaying WAL: %w", err)
+	}
+	if len(entries) == 0 {
+		return nil
+	}
+
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	for _, entry := range entries {
+		ms.applyWALEntryLocked(entry)
+	}
+	return nil
+}
+
+// applyWALEntryLocked applies one recovered WAL entry to live state.
+// Callers must hold ms.mu.
+func (ms *MeshStore) applyWALEntryLocked(entry persistence.WALEntry) {
+	switch entry.Operation {
+	case "consume":
+		counter, exists := ms.rateLimiters[entry.Key]
+		if !exists {
+			counter = core.NewGCounter()
+			ms.rateLimiters[entry.Key] = counter
+		}
+		// This WAL is this node's own history being replayed on itself
+		// after a restart, so the increment belongs to this node's own
+		// per-node count in the GCounter.
+		counter.Increment(ms.config.NodeName)
+
+	case "seen":
+		ms.replayProtection.Add(entry.Key)
+
+	case "set":
+		valueStr, _ := entry.Value.(string)
+		if _, exists := ms.cache[entry.Namespace]; !exists {
+			ms.cache[entry.Namespace] = make(map[string][]byte)
+			ms.cacheTTL[entry.Namespace] = make(map[string]time.Time)
+		}
+		ms.cache[entry.Namespace][entry.Key] = []byte(valueStr)
+		if entry.ExpiresAt > 0 {
+			ms.cacheTTL[entry.Namespace][entry.Key] = time.UnixMilli(entry.ExpiresAt)
+		} else {
+			delete(ms.cacheTTL[entry.Namespace], entry.Key)
+		}
+	}
 }
 
 // registerPipelineHandlers exposes the store's own operations as pipeline
@@ -427,6 +501,7 @@ func (ms *MeshStore) Consume(ctx context.Context, key string, limit int, window 
 	if current < limit {
 		counter.Increment(ms.config.NodeName)
 		allowed = true
+		ms.persistence.LogOperation("consume", key, nil, "", 0)
 		return core.ConsumeResult{
 			OK:        true,
 			Remaining: limit - current - 1,
@@ -456,6 +531,7 @@ func (ms *MeshStore) Seen(ctx context.Context, key string, ttl time.Duration) (b
 	}
 
 	ms.replayProtection.Add(key)
+	ms.persistence.LogOperation("seen", key, nil, "", 0)
 	return false, nil
 }
 
@@ -512,11 +588,15 @@ func (ms *MeshStore) Set(ctx context.Context, ns, key string, value []byte, ttl 
 	// expiry for it -- previously this always wrote time.Now().Add(ttl),
 	// which for ttl=0 set the expiry to right now, making every "no TTL"
 	// cache_set dead on arrival.
+	var expiresAt int64
 	if ttl > 0 {
-		ms.cacheTTL[ns][key] = time.Now().Add(ttl)
+		expiry := time.Now().Add(ttl)
+		ms.cacheTTL[ns][key] = expiry
+		expiresAt = expiry.UnixMilli()
 	} else {
 		delete(ms.cacheTTL[ns], key)
 	}
+	ms.persistence.LogOperation("set", key, string(value), ns, expiresAt)
 	return nil
 }
 
@@ -665,7 +745,25 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		CacheTTL:         cacheTTLCopy,
 	}
 
-	return ms.persistence.CreateSnapshot(snap)
+	if err := ms.persistence.CreateSnapshot(snap); err != nil {
+		return err
+	}
+
+	// Everything up to this snapshot is now captured on disk in the
+	// snapshot file itself, so the WAL entries logged before it are
+	// redundant -- rotating (archiving the current WAL and starting a
+	// fresh one) keeps disk usage from growing forever. Recovery only
+	// ever replays WAL entries after the latest snapshot's timestamp
+	// anyway, so this is purely a cleanup step, not a correctness one.
+	//
+	// Known narrow race, not fully closed here: the snapshot's state was
+	// copied (above, under RLock) slightly before persistence.CreateSnapshot
+	// stamps its Timestamp with its own time.Now(). A write landing in
+	// that gap could be logged to the WAL with a timestamp <= the
+	// snapshot's, making recovery treat it as already covered by the
+	// snapshot even if it arrived just after the state was copied. This
+	// is a narrow window (microseconds) rather than a structural gap.
+	return ms.persistence.RotateWAL()
 }
 
 // GetLatestSnapshot returns the most recent snapshot, or nil if none exist.
@@ -687,7 +785,13 @@ func (ms *MeshStore) RestoreFromLatestSnapshot(ctx context.Context) error {
 
 	ms.mu.Lock()
 	defer ms.mu.Unlock()
+	ms.applySnapshotLocked(snap)
+	return nil
+}
 
+// applySnapshotLocked replaces live rate limiter/replay-protection/cache
+// state with a loaded snapshot's contents. Callers must hold ms.mu.
+func (ms *MeshStore) applySnapshotLocked(snap *persistence.Snapshot) {
 	ms.rateLimiters = make(map[string]*core.GCounter, len(snap.RateLimiters))
 	for k, v := range snap.RateLimiters {
 		counts := map[string]int{}
@@ -720,8 +824,6 @@ func (ms *MeshStore) RestoreFromLatestSnapshot(ctx context.Context) error {
 		}
 		ms.cacheTTL[ns] = nsCopy
 	}
-
-	return nil
 }
 
 // GetPersistenceStats returns persistence statistics.

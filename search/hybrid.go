@@ -81,6 +81,18 @@ func (hse *HybridSearchEngine) IndexDocument(doc *Document) error {
 
 	// Index in BM25
 	hse.bm25.mu.Lock()
+	// Re-indexing an ID that's already present (an update, or -- once
+	// gossip replication re-indexes a merged document -- a repeated
+	// merge) previously indexed on top of the old entry without removing
+	// it first: indexBM25 unconditionally increments docCount, appends
+	// postings, and adds to totalTerms, so indexing the same ID twice
+	// double-counted it in every BM25 statistic, corrupting every score
+	// (docCount feeds IDF, totalTerms/docCount is avgDocLen, both are
+	// direct terms in the scoring formula). deindexBM25Locked undoes the
+	// previous indexing of this ID first, the same cleanup
+	// DeleteDocument already does, so a re-index is really "delete old,
+	// index new" rather than "add on top of old".
+	hse.deindexBM25Locked(doc.ID)
 	hse.bm25.documents[doc.ID] = doc
 	hse.indexBM25(doc)
 	hse.bm25.mu.Unlock()
@@ -94,6 +106,34 @@ func (hse *HybridSearchEngine) IndexDocument(doc *Document) error {
 	hse.vector.mu.Unlock()
 
 	return nil
+}
+
+// deindexBM25Locked removes docID's contribution to the BM25 index
+// entirely: its postings from every term, its term-length entry, and its
+// share of totalTerms/docCount/avgDocLen. A no-op if docID isn't indexed.
+// Callers must hold hse.bm25.mu and are responsible for removing docID
+// from hse.bm25.documents themselves (this only undoes indexBM25's
+// bookkeeping, not the raw document lookup).
+func (hse *HybridSearchEngine) deindexBM25Locked(docID string) {
+	if _, exists := hse.bm25.documents[docID]; !exists {
+		return
+	}
+
+	for term, postings := range hse.bm25.index {
+		delete(postings, docID)
+		if len(postings) == 0 {
+			delete(hse.bm25.index, term)
+		}
+	}
+
+	hse.bm25.totalTerms -= int64(hse.bm25.docTermsLen[docID])
+	delete(hse.bm25.docTermsLen, docID)
+	hse.bm25.docCount--
+	if hse.bm25.docCount > 0 {
+		hse.bm25.avgDocLen = float32(hse.bm25.totalTerms) / float32(hse.bm25.docCount)
+	} else {
+		hse.bm25.avgDocLen = 0
+	}
 }
 
 // indexBM25 indexes a document in BM25
@@ -258,31 +298,8 @@ func (hse *HybridSearchEngine) DeleteDocument(docID string) error {
 	defer hse.mu.Unlock()
 
 	hse.bm25.mu.Lock()
-	if _, exists := hse.bm25.documents[docID]; exists {
-		delete(hse.bm25.documents, docID)
-
-		// Previously the inverted index (term -> docID -> count) was never
-		// cleaned up on delete: a deleted document's ID stayed in every
-		// term's postings, so a later search would still match it and then
-		// nil-dereference on hse.bm25.documents[docID].Content, since the
-		// document itself had been removed. Remove the doc's postings from
-		// every term it appeared in, and prune terms left with no postings.
-		for term, postings := range hse.bm25.index {
-			delete(postings, docID)
-			if len(postings) == 0 {
-				delete(hse.bm25.index, term)
-			}
-		}
-
-		hse.bm25.totalTerms -= int64(hse.bm25.docTermsLen[docID])
-		delete(hse.bm25.docTermsLen, docID)
-		hse.bm25.docCount--
-		if hse.bm25.docCount > 0 {
-			hse.bm25.avgDocLen = float32(hse.bm25.totalTerms) / float32(hse.bm25.docCount)
-		} else {
-			hse.bm25.avgDocLen = 0
-		}
-	}
+	hse.deindexBM25Locked(docID)
+	delete(hse.bm25.documents, docID)
 	hse.bm25.mu.Unlock()
 
 	hse.vector.mu.Lock()

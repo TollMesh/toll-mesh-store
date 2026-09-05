@@ -28,6 +28,47 @@ func TestAvgDocLenIsARunningAverageNotLastDocLen(t *testing.T) {
 	}
 }
 
+// TestReindexingSameIDDoesNotDoubleCount is the regression test for a real
+// bug: IndexDocument never removed a document's *previous* BM25
+// contribution before re-indexing it under the same ID, so calling it
+// twice for the same ID (an update -- or, once gossip replication
+// re-indexes a merged/re-merged document, an ordinary occurrence) doubled
+// docCount, duplicated postings, and inflated totalTerms, corrupting
+// every BM25 score for every document (docCount feeds IDF, totalTerms/
+// docCount is avgDocLen, both are direct terms in the scoring formula).
+func TestReindexingSameIDDoesNotDoubleCount(t *testing.T) {
+	hse := NewHybridSearchEngine()
+
+	hse.IndexDocument(&Document{ID: "1", Content: "hello world"})
+	hse.IndexDocument(&Document{ID: "1", Content: "hello world"})
+
+	if hse.bm25.docCount != 1 {
+		t.Errorf("docCount after indexing the same ID twice = %d, want 1", hse.bm25.docCount)
+	}
+	if got := hse.bm25.index["hello"]["1"]; got != 1 {
+		t.Errorf("postings count for \"hello\"/doc1 = %d, want 1 (re-indexing duplicated postings instead of replacing)", got)
+	}
+	if hse.bm25.docTermsLen["1"] != 2 {
+		t.Errorf("docTermsLen[1] = %d, want 2", hse.bm25.docTermsLen["1"])
+	}
+	if hse.bm25.totalTerms != 2 {
+		t.Errorf("totalTerms = %d, want 2 (got inflated by the duplicate index call)", hse.bm25.totalTerms)
+	}
+
+	// Re-indexing with *different*, longer content must fully replace the
+	// old contribution, not add to it.
+	hse.IndexDocument(&Document{ID: "1", Content: "a completely different and longer sentence"})
+	if hse.bm25.docCount != 1 {
+		t.Errorf("docCount after updating doc 1's content = %d, want 1", hse.bm25.docCount)
+	}
+	if _, stillThere := hse.bm25.index["hello"]; stillThere {
+		t.Error("old content's postings (\"hello\") were not removed after re-indexing doc 1 with new content")
+	}
+	if hse.bm25.docTermsLen["1"] != 6 {
+		t.Errorf("docTermsLen[1] after update = %d, want 6 (the new content's term count)", hse.bm25.docTermsLen["1"])
+	}
+}
+
 func TestSearchAfterDeleteDoesNotCrashOrReturnDeletedDoc(t *testing.T) {
 	hse := NewHybridSearchEngine()
 	hse.IndexDocument(&Document{ID: "1", Content: "unique searchable term"})

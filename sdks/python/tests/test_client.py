@@ -3,6 +3,7 @@ Unit tests for TollMeshCache Python SDK
 """
 
 import pytest
+import requests
 from datetime import timedelta
 from unittest.mock import Mock, patch, MagicMock
 import json
@@ -144,7 +145,17 @@ class TestConsumeOperation:
             "code": 500,
             "message": "Internal server error",
         }
-        mock_response.raise_for_status.side_effect = Exception("HTTP 500")
+        # raise_for_status() on a real requests.Response raises HTTPError
+        # with .response set to itself. This test previously raised a bare
+        # Exception("HTTP 500") instead, which _request's except clauses
+        # don't catch (they catch ConnectionError/Timeout/HTTPError
+        # specifically) -- so the bare exception propagated uncaught and
+        # failed the test, rather than exercising the HTTPError handling
+        # path it's meant to test. Fixed to raise what requests actually
+        # raises.
+        http_error = requests.exceptions.HTTPError("HTTP 500")
+        http_error.response = mock_response
+        mock_response.raise_for_status.side_effect = http_error
         mock_post.return_value = mock_response
 
         with pytest.raises(TollMeshError):
@@ -193,24 +204,29 @@ class TestCacheOperations:
         client.cache_set("users", "user-123", "test-value", timedelta(hours=1))
         mock_post.assert_called_once()
 
-    @patch('tollmeshcache.client.requests.Session.post')
-    def test_cache_get_hit(self, mock_post, client):
+    @patch('tollmeshcache.client.requests.Session.get')
+    def test_cache_get_hit(self, mock_get, client):
         """Test cache get with hit"""
+        # cache_get issues a GET request with query params (api/http.go's
+        # handleCacheGet is GET-only) -- this test used to patch .post,
+        # which meant it never actually intercepted cache_get's real
+        # request and was silently making (and failing to make) a live
+        # network call instead of testing anything.
         mock_response = Mock()
         mock_response.status_code = 200
         mock_response.json.return_value = {
             "value": "test-value",
             "exists": True,
         }
-        mock_post.return_value = mock_response
+        mock_get.return_value = mock_response
 
         value, exists = client.cache_get("users", "user-123")
 
         assert value == "test-value"
         assert exists is True
 
-    @patch('tollmeshcache.client.requests.Session.post')
-    def test_cache_get_miss(self, mock_post, client):
+    @patch('tollmeshcache.client.requests.Session.get')
+    def test_cache_get_miss(self, mock_get, client):
         """Test cache get with miss"""
         mock_response = Mock()
         mock_response.status_code = 200
@@ -218,7 +234,7 @@ class TestCacheOperations:
             "value": None,
             "exists": False,
         }
-        mock_post.return_value = mock_response
+        mock_get.return_value = mock_response
 
         value, exists = client.cache_get("users", "user-999")
 

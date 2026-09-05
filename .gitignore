@@ -96,3 +96,6 @@ site/
 
 # RSpec's example-status persistence file (local test-run cache)
 .rspec_status
+
+# PHPUnit's local test-result cache
+.phpunit.result.cache

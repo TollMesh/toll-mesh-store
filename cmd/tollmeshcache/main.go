@@ -30,7 +30,21 @@ func main() {
 	httpAddr := flag.String("http-addr", ":8080", "address for the HTTP API to listen on")
 	advertiseAddr := flag.String("advertise-addr", "", "host:port other nodes should use to reach this node's HTTP API for gossip (default: derived from -http-addr with host \"localhost\")")
 	join := flag.String("join", "", "comma-separated host:port list of existing nodes' HTTP APIs to join at startup")
+	apiKeyFlag := flag.String("api-key", "", "if set, require this value via the X-API-Key header on every client-facing endpoint (also read from TOLLMESH_API_KEY if unset)")
+	clusterSecretFlag := flag.String("cluster-secret", "", "if set, require this value via the X-Cluster-Secret header on every /internal/* (gossip) endpoint, and send it to peers (also read from TOLLMESH_CLUSTER_SECRET if unset)")
 	flag.Parse()
+
+	// Prefer environment variables over flags for secrets when the flag
+	// wasn't explicitly given: a flag value is visible to anyone who can
+	// list processes on the host (`ps`), an env var is not.
+	apiKey := *apiKeyFlag
+	if apiKey == "" {
+		apiKey = os.Getenv("TOLLMESH_API_KEY")
+	}
+	clusterSecret := *clusterSecretFlag
+	if clusterSecret == "" {
+		clusterSecret = os.Getenv("TOLLMESH_CLUSTER_SECRET")
+	}
 
 	config := &core.ClusterConfig{
 		NodeName:      *nodeName,
@@ -48,13 +62,14 @@ func main() {
 
 	coordinator := coordination.NewGossipCoordinator(config, 5*time.Second)
 	coordinator.RegisterStateMerger(ms.MergeState)
+	coordinator.SetClusterSecret(clusterSecret)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	if err := coordinator.Start(ctx); err != nil {
 		log.Fatalf("failed to start coordinator: %v", err)
 	}
 
-	httpServer := api.NewHTTPServer(*httpAddr, ms, coordinator)
+	httpServer := api.NewHTTPServer(*httpAddr, ms, coordinator, apiKey, clusterSecret)
 
 	go func() {
 		log.Printf("tollmeshcache node %q listening on %s (gossip on %s:%d)", *nodeName, *httpAddr, *bindAddr, *bindPort)
@@ -73,7 +88,7 @@ func main() {
 			if target == "" {
 				continue
 			}
-			if err := joinCluster(target, selfAddr, selfPort, coordinator); err != nil {
+			if err := joinCluster(target, selfAddr, selfPort, coordinator, clusterSecret); err != nil {
 				log.Printf("failed to join %s: %v", target, err)
 			} else {
 				log.Printf("joined cluster via %s", target)
@@ -135,7 +150,7 @@ func splitHostPort(addr string) (host, port string, err error) {
 // target as a peer, and adds every peer target told us about too, so a
 // single -join address is enough to discover (and be discovered by) the
 // rest of an already-formed cluster.
-func joinCluster(target, selfAddr string, selfPort int, coordinator *coordination.GossipCoordinator) error {
+func joinCluster(target, selfAddr string, selfPort int, coordinator *coordination.GossipCoordinator, clusterSecret string) error {
 	host, portStr, err := splitHostPort(target)
 	if err != nil {
 		return err
@@ -147,7 +162,15 @@ func joinCluster(target, selfAddr string, selfPort int, coordinator *coordinatio
 
 	body, _ := json.Marshal(api.PeerJoinRequest{Address: selfAddr, Port: selfPort})
 	url := fmt.Sprintf("http://%s/internal/peers/join", target)
-	resp, err := http.Post(url, "application/json", bytes.NewReader(body))
+	req, err := http.NewRequest(http.MethodPost, url, bytes.NewReader(body))
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	if clusterSecret != "" {
+		req.Header.Set("X-Cluster-Secret", clusterSecret)
+	}
+	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
 		return err
 	}

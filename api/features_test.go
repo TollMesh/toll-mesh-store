@@ -28,7 +28,7 @@ func newTestServer(t *testing.T) *HTTPServer {
 	t.Cleanup(func() { ms.Close() })
 
 	coordinator := coordination.NewGossipCoordinator(config, 0)
-	return NewHTTPServer(":0", ms, coordinator)
+	return NewHTTPServer(":0", ms, coordinator, "", "")
 }
 
 func postJSON(t *testing.T, hs *HTTPServer, path string, body interface{}, out interface{}) int {

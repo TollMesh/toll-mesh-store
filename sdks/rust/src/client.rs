@@ -12,8 +12,23 @@ pub struct Client {
 impl Client {
     /// Create new client with configuration
     pub fn new(config: ClientConfig) -> Result<Self, TollMeshError> {
-        let http_client = reqwest::Client::builder()
-            .timeout(config.timeout)
+        // X-API-Key as a default header applies to every request this
+        // client makes (post/get/get_with_query and the couple of call
+        // sites that build a request directly, like
+        // get_prometheus_metrics), the same way Python's
+        // session.headers.update and C#'s DefaultRequestHeaders.Add do --
+        // this client previously never sent the key at all despite
+        // ClientConfig::api_key existing and being documented.
+        let mut builder = reqwest::Client::builder().timeout(config.timeout);
+        if let Some(key) = &config.api_key {
+            let mut headers = reqwest::header::HeaderMap::new();
+            let value = reqwest::header::HeaderValue::from_str(key).map_err(|e| {
+                TollMeshError::new(ErrorCode::InvalidRequest, format!("invalid api_key: {}", e))
+            })?;
+            headers.insert("X-API-Key", value);
+            builder = builder.default_headers(headers);
+        }
+        let http_client = builder
             .build()
             .map_err(|e| TollMeshError::new(
                 ErrorCode::Internal,
@@ -324,6 +339,7 @@ impl Client {
             let status = response.status().as_u16() as i32;
             let code = match status {
                 400 => ErrorCode::InvalidRequest,
+                401 => ErrorCode::Unauthorized,
                 404 => ErrorCode::NotFound,
                 429 => ErrorCode::RateLimited,
                 500 => ErrorCode::Internal,

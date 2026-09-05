@@ -8,6 +8,7 @@ export enum ErrorCode {
 
   // Client errors (4xx)
   INVALID_REQUEST = 400,
+  UNAUTHORIZED = 401,
   NOT_FOUND = 404,
   CONFLICT = 409,
 

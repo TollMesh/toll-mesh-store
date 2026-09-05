@@ -60,7 +60,7 @@ func newBenchServer(b *testing.B) (*httptest.Server, *http.Client) {
 	b.Cleanup(func() { ms.Close() })
 
 	coordinator := coordination.NewGossipCoordinator(config, 0)
-	hs := NewHTTPServer(":0", ms, coordinator)
+	hs := NewHTTPServer(":0", ms, coordinator, "", "")
 	server := httptest.NewServer(hs.mux)
 	b.Cleanup(server.Close)
 

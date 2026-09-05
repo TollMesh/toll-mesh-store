@@ -44,7 +44,7 @@ func newGossipTestNode(t *testing.T, name string, syncInterval time.Duration) *g
 	coordinator := coordination.NewGossipCoordinator(config, syncInterval)
 	coordinator.RegisterStateMerger(ms.MergeState)
 
-	hs := NewHTTPServer(":0", ms, coordinator)
+	hs := NewHTTPServer(":0", ms, coordinator, "", "")
 	server := httptest.NewServer(hs.mux)
 	t.Cleanup(server.Close)
 

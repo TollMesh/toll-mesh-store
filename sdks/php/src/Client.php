@@ -13,10 +13,23 @@ class Client
     public function __construct(?ClientConfig $config = null)
     {
         $this->config = $config ?? new ClientConfig();
+
+        // Default headers apply to every request Guzzle makes with this
+        // client, the same way Python's requests.Session and C#'s
+        // DefaultRequestHeaders do. Previously X-API-Key was only added
+        // in post() (and only there), so any GET-based method (cache_get,
+        // health, getMetrics, getPrometheusMetrics, every zset/stream
+        // read, ...) never sent it at all.
+        $headers = ['User-Agent' => 'tollmeshcache-php/1.0.0'];
+        if (!empty($this->config->api_key)) {
+            $headers['X-API-Key'] = $this->config->api_key;
+        }
+
         $this->http = new GuzzleClient([
             'base_uri' => $this->config->getBaseUrl(),
             'timeout' => $this->config->timeout,
             'verify' => $this->config->verify_ssl,
+            'headers' => $headers,
         ]);
     }
 
@@ -412,22 +425,18 @@ class Client
 
     public function getPrometheusMetrics(): string
     {
-        $response = $this->http->get('/metrics/prometheus', [
-            'headers' => ['User-Agent' => 'tollmeshcache-php/1.0.0'],
-        ]);
+        $response = $this->http->get('/metrics/prometheus');
         return (string) $response->getBody();
     }
 
     private function post(string $endpoint, array $body): array
     {
         try {
-            $response = $this->http->post($endpoint, [
-                'json' => $body,
-                'headers' => [
-                    'User-Agent' => 'tollmeshcache-php/1.0.0',
-                    'X-API-Key' => $this->config->api_key ?? '',
-                ],
-            ]);
+            // User-Agent and X-API-Key (if configured) come from the
+            // GuzzleClient's own default headers, set once in the
+            // constructor -- see its comment for why that replaced
+            // per-call headers here.
+            $response = $this->http->post($endpoint, ['json' => $body]);
 
             return json_decode($response->getBody()->getContents(), true) ?? [];
         } catch (RequestException $e) {
@@ -438,10 +447,7 @@ class Client
     private function get(string $endpoint, array $query = []): array
     {
         try {
-            $response = $this->http->get($endpoint, [
-                'query' => $query,
-                'headers' => ['User-Agent' => 'tollmeshcache-php/1.0.0'],
-            ]);
+            $response = $this->http->get($endpoint, ['query' => $query]);
 
             return json_decode($response->getBody()->getContents(), true) ?? [];
         } catch (RequestException $e) {

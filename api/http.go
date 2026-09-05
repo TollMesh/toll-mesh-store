@@ -1,10 +1,12 @@
 package api
 
 import (
+	"crypto/subtle"
 	"encoding/json"
 	"math"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/toll-mesh/store/coordination"
@@ -17,10 +19,12 @@ import (
 
 // HTTPServer provides REST API for MeshStore operations
 type HTTPServer struct {
-	store       core.Store
-	coordinator *coordination.GossipCoordinator
-	mux         *http.ServeMux
-	server      *http.Server
+	store         core.Store
+	coordinator   *coordination.GossipCoordinator
+	mux           *http.ServeMux
+	server        *http.Server
+	apiKey        string // if set, required via X-API-Key on every SDK-facing endpoint except /health
+	clusterSecret string // if set, required via X-Cluster-Secret on every /internal/* endpoint
 }
 
 // ConsumeRequest represents a rate limit request
@@ -73,12 +77,15 @@ type HealthResponse struct {
 	Stats  map[string]interface{} `json:"stats,omitempty"`
 }
 
-// NewHTTPServer creates a new HTTP API server
-func NewHTTPServer(addr string, store core.Store, coordinator *coordination.GossipCoordinator) *HTTPServer {
+// NewHTTPServer creates a new HTTP API server. apiKey and clusterSecret are
+// both optional (pass "" to disable) -- see HTTPServer's field comments.
+func NewHTTPServer(addr string, store core.Store, coordinator *coordination.GossipCoordinator, apiKey string, clusterSecret string) *HTTPServer {
 	hs := &HTTPServer{
-		store:       store,
-		coordinator: coordinator,
-		mux:         http.NewServeMux(),
+		store:         store,
+		coordinator:   coordinator,
+		mux:           http.NewServeMux(),
+		apiKey:        apiKey,
+		clusterSecret: clusterSecret,
 	}
 
 	// Register handlers
@@ -173,10 +180,55 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 
 	hs.server = &http.Server{
 		Addr:    addr,
-		Handler: hs.mux,
+		Handler: hs.authMiddleware(hs.mux),
 	}
 
 	return hs
+}
+
+// authMiddleware enforces apiKey/clusterSecret on incoming requests, if
+// configured. Every SDK has sent an X-API-Key header since it was written,
+// but nothing ever checked it server-side -- every request succeeded
+// regardless of the key's presence or correctness, making the "api_key"
+// config option in all 7 SDKs entirely decorative. /health stays
+// unauthenticated even when apiKey is set, for basic load-balancer/
+// monitoring checks that can't be expected to know a secret. Key
+// comparison uses constant-time comparison (crypto/subtle) so this can't
+// leak the correct key's length/prefix via response-timing differences.
+func (hs *HTTPServer) authMiddleware(next http.Handler) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// A plain-text body here (the original http.Error(w, "unauthorized",
+		// ...) this replaced) breaks every SDK's JSON error parsing to
+		// varying degrees -- from a clean fallback (Node.js, Ruby, Java,
+		// C#) to a hard crash (Python's ErrorCode(401) raising ValueError,
+		// since 401 wasn't even a defined enum member). writeJSON matches
+		// the {"code", "message"} shape every SDK's error handling already
+		// expects from every other endpoint.
+		if strings.HasPrefix(r.URL.Path, "/internal/") {
+			if hs.clusterSecret != "" && !constantTimeEqual(r.Header.Get("X-Cluster-Secret"), hs.clusterSecret) {
+				writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"code": http.StatusUnauthorized, "message": "invalid or missing cluster secret"})
+				return
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if r.URL.Path == "/health" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		if hs.apiKey != "" && !constantTimeEqual(r.Header.Get("X-API-Key"), hs.apiKey) {
+			writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"code": http.StatusUnauthorized, "message": "invalid or missing API key"})
+			return
+		}
+
+		next.ServeHTTP(w, r)
+	})
+}
+
+func constantTimeEqual(a, b string) bool {
+	return subtle.ConstantTimeCompare([]byte(a), []byte(b)) == 1
 }
 
 // Start starts the HTTP server

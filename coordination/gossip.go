@@ -35,6 +35,7 @@ type GossipCoordinator struct {
 	messageHandler func(msg *GossipMessage) error
 	stateMerger    func(peer *core.MeshStoreState)
 	httpClient     *http.Client
+	clusterSecret  string // sent as X-Cluster-Secret on every outgoing gossip request, if set
 }
 
 // NewGossipCoordinator creates a new gossip coordinator
@@ -56,6 +57,16 @@ func NewGossipCoordinator(config *core.ClusterConfig, syncInterval time.Duration
 	}
 
 	return gc
+}
+
+// SetClusterSecret sets the value sent as X-Cluster-Secret on every
+// outgoing gossip request (to a peer's /internal/state). Peers that
+// enforce a cluster secret of their own reject requests without a
+// matching one -- see api.HTTPServer's authMiddleware.
+func (gc *GossipCoordinator) SetClusterSecret(secret string) {
+	gc.mu.Lock()
+	defer gc.mu.Unlock()
+	gc.clusterSecret = secret
 }
 
 // RegisterStateMerger registers the function called with a peer's decoded
@@ -113,6 +124,7 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	}
 	merger := gc.stateMerger
 	client := gc.httpClient
+	clusterSecret := gc.clusterSecret
 	gc.mu.RUnlock()
 
 	if len(peers) == 0 || merger == nil {
@@ -126,6 +138,9 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return
+	}
+	if clusterSecret != "" {
+		req.Header.Set("X-Cluster-Secret", clusterSecret)
 	}
 
 	resp, err := client.Do(req)

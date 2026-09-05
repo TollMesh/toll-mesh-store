@@ -49,6 +49,16 @@ public class Client implements AutoCloseable {
             builder.hostnameVerifier((hostname, session) -> true);
         }
 
+        // OkHttp has no built-in "default headers on every request" option
+        // (unlike reqwest/axios/Python's requests.Session) -- an
+        // Interceptor is the idiomatic way. Without this, ClientConfig's
+        // apiKey was accepted and stored but never actually sent anywhere.
+        if (config.getApiKey() != null && !config.getApiKey().isEmpty()) {
+            String apiKey = config.getApiKey();
+            builder.addInterceptor(chain -> chain.proceed(
+                    chain.request().newBuilder().header("X-API-Key", apiKey).build()));
+        }
+
         this.httpClient = builder.build();
     }
 

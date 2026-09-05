@@ -5,6 +5,7 @@ use std::fmt;
 pub enum ErrorCode {
     Ok = 0,
     InvalidRequest = 400,
+    Unauthorized = 401,
     NotFound = 404,
     Conflict = 409,
     RateLimited = 429,

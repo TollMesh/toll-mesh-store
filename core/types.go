@@ -149,4 +149,14 @@ type MeshStoreState struct {
 	// CacheTTL holds each cache entry's expiry as Unix millis, mirroring
 	// Cache's namespace/key shape. A zero or absent entry means no TTL.
 	CacheTTL map[string]map[string]int64
+	// CacheTimestamp/CacheNode mirror Cache's namespace/key shape and
+	// carry each entry's LWW-register version: MergeState uses these to
+	// decide, for a key present on both sides, whether the peer's value
+	// is newer (adopt it) or older/equal (keep local) -- the later
+	// Timestamp wins, Node breaks an exact tie. Without these, cache
+	// merge can only safely do a conservative union (peer fills in keys
+	// the local side lacks), which doesn't converge two nodes' concurrent
+	// writes to the *same* key the way GCounter/GSet do.
+	CacheTimestamp map[string]map[string]int64
+	CacheNode      map[string]map[string]string
 }

@@ -27,6 +27,12 @@ type Snapshot struct {
 	ReplayProtection []string                     `json:"replay_protection"`
 	Cache            map[string]map[string][]byte `json:"cache"`
 	CacheTTL         map[string]map[string]int64  `json:"cache_ttl"`
+	// CacheTimestamp/CacheNode mirror Cache's namespace/key shape and
+	// carry each entry's LWW-register version (see cacheEntry in
+	// store/mesh_store.go) -- needed so a snapshot round-trip doesn't
+	// lose the version info a later cache merge needs.
+	CacheTimestamp map[string]map[string]int64  `json:"cache_timestamp,omitempty"`
+	CacheNode      map[string]map[string]string `json:"cache_node,omitempty"`
 }
 
 // WALEntry represents a write-ahead log entry
@@ -43,6 +49,25 @@ type WALEntry struct {
 	// already-expired entry, which callers already treat as absent.
 	// Zero means no expiration.
 	ExpiresAt int64 `json:"expires_at,omitempty"`
+	// Node is the writer's node ID, for "set" entries -- part of the
+	// cache LWW-register version alongside Version (not Timestamp; see
+	// Version's doc comment for why these two are different fields).
+	Node string `json:"node,omitempty"`
+	// Version is the cache LWW-register version for "set" entries --
+	// deliberately separate from Timestamp. Timestamp always means "when
+	// this node wrote this WAL entry" and must stay in this node's own
+	// WAL-sequence order for ReplayWAL's snapshot-cutoff filtering to work
+	// (entry.Timestamp > afterTimestamp). Version is the CRDT version a
+	// cache entry actually carries: for a normal local Set it's the same
+	// value as Timestamp, but for an entry this node is persisting *after
+	// learning it via gossip from a peer*, Version is the peer's original
+	// write time, which can be earlier than this node's own snapshots --
+	// logging that under Timestamp would make ReplayWAL wrongly treat it
+	// as already covered by an intervening local snapshot and drop it on
+	// recovery. Confirmed live: without this split, a gossip-merged value
+	// vanished on the receiving node's next restart, reverting to that
+	// node's own older local write.
+	Version int64 `json:"version,omitempty"`
 }
 
 // NewPersistenceEngine creates a new persistence engine
@@ -78,26 +103,40 @@ func NewPersistenceEngine(walPath, snapshotPath string, snapshotInterval time.Du
 
 // LogOperation writes an operation to the WAL. expiresAt is the entry's
 // absolute expiry in Unix millis (0 for no expiration); it's only
-// meaningful for "set".
-func (pe *PersistenceEngine) LogOperation(op string, key string, value interface{}, namespace string, expiresAt int64) error {
+// meaningful for "set". node is the writer's node ID, also only
+// meaningful for "set" (part of the cache LWW-register version). version
+// is the cache LWW-register version to record; pass 0 for a normal local
+// write (it defaults to this call's own timestamp) -- pass the original
+// write's own timestamp when persisting a value learned via gossip from a
+// peer, so recovery reconstructs the correct CRDT version rather than one
+// stamped at merge time (see WALEntry.Version's doc comment for why this
+// distinction matters).
+func (pe *PersistenceEngine) LogOperation(op string, key string, value interface{}, namespace string, expiresAt int64, node string, version int64) error {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
+	// Nanosecond resolution matters here: this timestamp is compared
+	// against a snapshot's timestamp in ReplayWAL to decide whether an
+	// entry is "already covered" by that snapshot. Millisecond resolution
+	// let a snapshot and the very next write -- executed as two separate
+	// statements immediately after each other, e.g. in a test -- land in
+	// the same millisecond, making a real write silently indistinguishable
+	// from "before the snapshot" and dropped by recovery. Confirmed live
+	// via a failing test.
+	now := time.Now().UnixNano()
+	if version == 0 {
+		version = now
+	}
+
 	entry := WALEntry{
-		// Nanosecond resolution matters here: this timestamp is compared
-		// against a snapshot's timestamp in ReplayWAL to decide whether an
-		// entry is "already covered" by that snapshot. Millisecond
-		// resolution let a snapshot and the very next write -- executed
-		// as two separate statements immediately after each other, e.g.
-		// in a test -- land in the same millisecond, making a real write
-		// silently indistinguishable from "before the snapshot" and
-		// dropped by recovery. Confirmed live via a failing test.
-		Timestamp: time.Now().UnixNano(),
+		Timestamp: now,
 		Operation: op,
 		Key:       key,
 		Value:     value,
 		Namespace: namespace,
 		ExpiresAt: expiresAt,
+		Node:      node,
+		Version:   version,
 	}
 
 	data, err := json.Marshal(entry)

@@ -139,6 +139,62 @@ func TestGossipReplicationConvergesAcrossRealNodes(t *testing.T) {
 	}
 }
 
+// TestGossipCacheLWWConvergesOnConcurrentSameKeyWrites is the regression
+// test for cache's real LWW-register CRDT merge: two nodes independently
+// writing the *same* key must converge to whichever write actually
+// happened later, on every node, regardless of which node did which write
+// or the order gossip happens to run in. The old conservative-union merge
+// (a peer's entry only adopted for a key the local side lacked) could not
+// do this at all -- both nodes would just keep their own value forever.
+// This also exercises the exact comparison this merge got backwards on
+// the first pass (adopting only *older* peer entries instead of newer
+// ones), so it would have caught that bug directly.
+func TestGossipCacheLWWConvergesOnConcurrentSameKeyWrites(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	// node1 writes first, then node2 overwrites the same key slightly
+	// later -- node2's write should win everywhere once gossip converges,
+	// on both nodes, not just the one that made the later write.
+	if err := node1.store.Set(ctx, "shared", "key", []byte("from-node1-first"), 0); err != nil {
+		t.Fatalf("node1 Set failed: %v", err)
+	}
+	time.Sleep(5 * time.Millisecond) // ensure a strictly later wall-clock write
+	if err := node2.store.Set(ctx, "shared", "key", []byte("from-node2-later"), 0); err != nil {
+		t.Fatalf("node2 Set failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastErr = nil
+		for _, n := range []*gossipTestNode{node1, node2} {
+			v, exists, err := n.store.Get(ctx, "shared", "key")
+			if err != nil || !exists || string(v) != "from-node2-later" {
+				lastErr = fmt.Errorf("%s: shared/key = %q exists=%v err=%v, want \"from-node2-later\" (the later write)", n.name, v, exists, err)
+				break
+			}
+		}
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("cache did not converge to the later write within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

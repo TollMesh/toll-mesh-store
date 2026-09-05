@@ -20,7 +20,7 @@ func BenchmarkLogOperation(b *testing.B) {
 	b.ResetTimer()
 	b.ReportAllocs()
 	for i := 0; i < b.N; i++ {
-		if err := pe.LogOperation("set", "bench-key", "bench-value-payload", "bench", 0); err != nil {
+		if err := pe.LogOperation("set", "bench-key", "bench-value-payload", "bench", 0, "bench-node", 0); err != nil {
 			b.Fatalf("LogOperation failed: %v", err)
 		}
 	}
@@ -43,7 +43,7 @@ func BenchmarkLogOperationParallel(b *testing.B) {
 		i := 0
 		for pb.Next() {
 			key := fmt.Sprintf("bench-key-%d", i)
-			if err := pe.LogOperation("set", key, "bench-value-payload", "bench", 0); err != nil {
+			if err := pe.LogOperation("set", key, "bench-value-payload", "bench", 0, "bench-node", 0); err != nil {
 				b.Fatalf("LogOperation failed: %v", err)
 			}
 			i++

@@ -20,14 +20,27 @@ import (
 	"github.com/toll-mesh/store/transactions"
 )
 
+// cacheEntry is a cache value plus what's needed to merge it as a real
+// LWW-register CRDT across nodes: Timestamp (wall-clock nanoseconds at
+// write time) and Node (the writer's node ID, used to deterministically
+// break ties between two writes with an identical Timestamp). Two nodes
+// concurrently writing the same key converge to whichever write has the
+// later Timestamp, with Node breaking exact ties -- the same outcome on
+// every node, regardless of gossip order.
+type cacheEntry struct {
+	Value     []byte
+	ExpiresAt time.Time // zero means no TTL
+	Timestamp int64
+	Node      string
+}
+
 // MeshStore implements the Store interface using CRDTs and gossip protocol.
 type MeshStore struct {
 	mu               sync.RWMutex
 	config           *core.ClusterConfig
 	rateLimiters     map[string]*core.GCounter
 	replayProtection *core.GSet
-	cache            map[string]map[string][]byte
-	cacheTTL         map[string]map[string]time.Time
+	cache            map[string]map[string]*cacheEntry
 	stopChan         chan struct{}
 
 	jobManager *queue.JobManager
@@ -72,8 +85,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		config:           config,
 		rateLimiters:     make(map[string]*core.GCounter),
 		replayProtection: core.NewGSet(),
-		cache:            make(map[string]map[string][]byte),
-		cacheTTL:         make(map[string]map[string]time.Time),
+		cache:            make(map[string]map[string]*cacheEntry),
 		stopChan:         make(chan struct{}),
 		jobManager:       queue.NewJobManager(config.NodeName),
 		zsets:            make(map[string]*sortedset.SortedSet),
@@ -167,15 +179,13 @@ func (ms *MeshStore) applyWALEntryLocked(entry persistence.WALEntry) {
 	case "set":
 		valueStr, _ := entry.Value.(string)
 		if _, exists := ms.cache[entry.Namespace]; !exists {
-			ms.cache[entry.Namespace] = make(map[string][]byte)
-			ms.cacheTTL[entry.Namespace] = make(map[string]time.Time)
+			ms.cache[entry.Namespace] = make(map[string]*cacheEntry)
 		}
-		ms.cache[entry.Namespace][entry.Key] = []byte(valueStr)
+		ce := &cacheEntry{Value: []byte(valueStr), Timestamp: entry.Version, Node: entry.Node}
 		if entry.ExpiresAt > 0 {
-			ms.cacheTTL[entry.Namespace][entry.Key] = time.UnixMilli(entry.ExpiresAt)
-		} else {
-			delete(ms.cacheTTL[entry.Namespace], entry.Key)
+			ce.ExpiresAt = time.UnixMilli(entry.ExpiresAt)
 		}
+		ms.cache[entry.Namespace][entry.Key] = ce
 	}
 }
 
@@ -501,7 +511,7 @@ func (ms *MeshStore) Consume(ctx context.Context, key string, limit int, window 
 	if current < limit {
 		counter.Increment(ms.config.NodeName)
 		allowed = true
-		ms.persistence.LogOperation("consume", key, nil, "", 0)
+		ms.persistence.LogOperation("consume", key, nil, "", 0, "", 0)
 		return core.ConsumeResult{
 			OK:        true,
 			Remaining: limit - current - 1,
@@ -531,7 +541,7 @@ func (ms *MeshStore) Seen(ctx context.Context, key string, ttl time.Duration) (b
 	}
 
 	ms.replayProtection.Add(key)
-	ms.persistence.LogOperation("seen", key, nil, "", 0)
+	ms.persistence.LogOperation("seen", key, nil, "", 0, "", 0)
 	return false, nil
 }
 
@@ -549,22 +559,17 @@ func (ms *MeshStore) Get(ctx context.Context, ns, key string) ([]byte, bool, err
 		return nil, false, nil
 	}
 
-	value, exists := nsCache[key]
+	entry, exists := nsCache[key]
 	if !exists {
 		return nil, false, nil
 	}
 
-	ttlMap, ttlExists := ms.cacheTTL[ns]
-	if ttlExists {
-		if expiry, ok := ttlMap[key]; ok {
-			if time.Now().After(expiry) {
-				return nil, false, nil
-			}
-		}
+	if !entry.ExpiresAt.IsZero() && time.Now().After(entry.ExpiresAt) {
+		return nil, false, nil
 	}
 
 	hit = true
-	return value, true, nil
+	return entry.Value, true, nil
 }
 
 // Set stores a value with TTL.
@@ -576,27 +581,31 @@ func (ms *MeshStore) Set(ctx context.Context, ns, key string, value []byte, ttl 
 	defer ms.mu.Unlock()
 
 	if _, exists := ms.cache[ns]; !exists {
-		ms.cache[ns] = make(map[string][]byte)
-		ms.cacheTTL[ns] = make(map[string]time.Time)
+		ms.cache[ns] = make(map[string]*cacheEntry)
 	}
 
-	ms.cache[ns][key] = value
+	// Set is a local mutation on this node, same reasoning as SortedSet.Add:
+	// its own wall-clock write time is always causally after whatever this
+	// node last wrote for this key, so it applies unconditionally. The
+	// Timestamp/Node recorded here are what let a peer's MergeState later
+	// decide, for a key written on two different nodes, which write is
+	// newer -- see cacheEntry's doc comment.
+	ts := time.Now().UnixNano()
+	ce := &cacheEntry{Value: value, Timestamp: ts, Node: ms.config.NodeName}
 
 	// ttl <= 0 means "no expiration" (this is the documented contract every
 	// SDK exposes, e.g. Python's cache_set(..., ttl=None)). Get() treats a
-	// key absent from cacheTTL as never expiring, so simply don't record an
-	// expiry for it -- previously this always wrote time.Now().Add(ttl),
-	// which for ttl=0 set the expiry to right now, making every "no TTL"
-	// cache_set dead on arrival.
-	var expiresAt int64
+	// zero ExpiresAt as never expiring, so simply don't set it -- previously
+	// this always wrote time.Now().Add(ttl), which for ttl=0 set the expiry
+	// to right now, making every "no TTL" cache_set dead on arrival.
+	var expiresAtMs int64
 	if ttl > 0 {
-		expiry := time.Now().Add(ttl)
-		ms.cacheTTL[ns][key] = expiry
-		expiresAt = expiry.UnixMilli()
-	} else {
-		delete(ms.cacheTTL[ns], key)
+		ce.ExpiresAt = time.Now().Add(ttl)
+		expiresAtMs = ce.ExpiresAt.UnixMilli()
 	}
-	ms.persistence.LogOperation("set", key, string(value), ns, expiresAt)
+
+	ms.cache[ns][key] = ce
+	ms.persistence.LogOperation("set", key, string(value), ns, expiresAtMs, ms.config.NodeName, 0)
 	return nil
 }
 
@@ -686,11 +695,13 @@ func (ms *MeshStore) CommitTransaction(ctx context.Context, txnID string) error 
 		}
 		valueStr, _ := op.Value.(string)
 		if _, exists := ms.cache[op.Namespace]; !exists {
-			ms.cache[op.Namespace] = make(map[string][]byte)
-			ms.cacheTTL[op.Namespace] = make(map[string]time.Time)
+			ms.cache[op.Namespace] = make(map[string]*cacheEntry)
 		}
-		ms.cache[op.Namespace][op.Key] = []byte(valueStr)
-		delete(ms.cacheTTL[op.Namespace], op.Key)
+		ms.cache[op.Namespace][op.Key] = &cacheEntry{
+			Value:     []byte(valueStr),
+			Timestamp: time.Now().UnixNano(),
+			Node:      ms.config.NodeName,
+		}
 	}
 
 	return nil
@@ -710,6 +721,41 @@ func (ms *MeshStore) GetTransactionStatus(ctx context.Context, txnID string) (tr
 
 // ===== Persistence =====
 
+// copyCacheLocked flattens the live cache into the parallel-map shape used
+// by both persistence.Snapshot and core.MeshStoreState on the wire.
+// Callers must hold ms.mu (for reading).
+func (ms *MeshStore) copyCacheLocked() (
+	cache map[string]map[string][]byte,
+	ttl map[string]map[string]int64,
+	timestamp map[string]map[string]int64,
+	node map[string]map[string]string,
+) {
+	cache = make(map[string]map[string][]byte, len(ms.cache))
+	ttl = make(map[string]map[string]int64, len(ms.cache))
+	timestamp = make(map[string]map[string]int64, len(ms.cache))
+	node = make(map[string]map[string]string, len(ms.cache))
+
+	for ns, kv := range ms.cache {
+		cacheNs := make(map[string][]byte, len(kv))
+		ttlNs := make(map[string]int64, len(kv))
+		tsNs := make(map[string]int64, len(kv))
+		nodeNs := make(map[string]string, len(kv))
+		for k, v := range kv {
+			cacheNs[k] = v.Value
+			if !v.ExpiresAt.IsZero() {
+				ttlNs[k] = v.ExpiresAt.UnixMilli()
+			}
+			tsNs[k] = v.Timestamp
+			nodeNs[k] = v.Node
+		}
+		cache[ns] = cacheNs
+		ttl[ns] = ttlNs
+		timestamp[ns] = tsNs
+		node[ns] = nodeNs
+	}
+	return cache, ttl, timestamp, node
+}
+
 // CreateSnapshot captures the current live store state to disk.
 func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 	ms.mu.RLock()
@@ -718,24 +764,7 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		rateLimiters[k] = v.Snapshot()
 	}
 	replayProtection := ms.replayProtection.Snapshot()
-
-	cacheCopy := make(map[string]map[string][]byte, len(ms.cache))
-	for ns, kv := range ms.cache {
-		nsCopy := make(map[string][]byte, len(kv))
-		for k, v := range kv {
-			nsCopy[k] = v
-		}
-		cacheCopy[ns] = nsCopy
-	}
-
-	cacheTTLCopy := make(map[string]map[string]int64, len(ms.cacheTTL))
-	for ns, kv := range ms.cacheTTL {
-		nsCopy := make(map[string]int64, len(kv))
-		for k, v := range kv {
-			nsCopy[k] = v.UnixMilli()
-		}
-		cacheTTLCopy[ns] = nsCopy
-	}
+	cacheCopy, cacheTTLCopy, cacheTimestampCopy, cacheNodeCopy := ms.copyCacheLocked()
 	ms.mu.RUnlock()
 
 	snap := &persistence.Snapshot{
@@ -743,6 +772,8 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		ReplayProtection: replayProtection,
 		Cache:            cacheCopy,
 		CacheTTL:         cacheTTLCopy,
+		CacheTimestamp:   cacheTimestampCopy,
+		CacheNode:        cacheNodeCopy,
 	}
 
 	if err := ms.persistence.CreateSnapshot(snap); err != nil {
@@ -807,23 +838,42 @@ func (ms *MeshStore) applySnapshotLocked(snap *persistence.Snapshot) {
 
 	ms.replayProtection = core.RestoreGSet(snap.ReplayProtection)
 
-	ms.cache = make(map[string]map[string][]byte, len(snap.Cache))
-	for ns, kv := range snap.Cache {
-		nsCopy := make(map[string][]byte, len(kv))
-		for k, v := range kv {
-			nsCopy[k] = v
-		}
-		ms.cache[ns] = nsCopy
-	}
+	ms.cache = restoreCacheLocked(snap.Cache, snap.CacheTTL, snap.CacheTimestamp, snap.CacheNode)
+}
 
-	ms.cacheTTL = make(map[string]map[string]time.Time, len(snap.CacheTTL))
-	for ns, kv := range snap.CacheTTL {
-		nsCopy := make(map[string]time.Time, len(kv))
+// restoreCacheLocked is the inverse of copyCacheLocked: reassembles the
+// live cache representation from the wire/disk parallel-map shape. ttl,
+// timestamp, and node may be nil (e.g. an older snapshot written before
+// this cache versioning existed) -- entries just come back with a zero
+// Timestamp/Node in that case, which MergeState treats as always losing
+// to anything with a real version.
+func restoreCacheLocked(
+	cache map[string]map[string][]byte,
+	ttl map[string]map[string]int64,
+	timestamp map[string]map[string]int64,
+	node map[string]map[string]string,
+) map[string]map[string]*cacheEntry {
+	out := make(map[string]map[string]*cacheEntry, len(cache))
+	for ns, kv := range cache {
+		nsOut := make(map[string]*cacheEntry, len(kv))
 		for k, v := range kv {
-			nsCopy[k] = time.UnixMilli(v)
+			ce := &cacheEntry{Value: v}
+			if ttl != nil {
+				if ms, ok := ttl[ns][k]; ok && ms > 0 {
+					ce.ExpiresAt = time.UnixMilli(ms)
+				}
+			}
+			if timestamp != nil {
+				ce.Timestamp = timestamp[ns][k]
+			}
+			if node != nil {
+				ce.Node = node[ns][k]
+			}
+			nsOut[k] = ce
 		}
-		ms.cacheTTL[ns] = nsCopy
+		out[ns] = nsOut
 	}
+	return out
 }
 
 // GetPersistenceStats returns persistence statistics.
@@ -853,43 +903,29 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		rateLimiters[k] = v.Snapshot()
 	}
 
-	cacheCopy := make(map[string]map[string][]byte, len(ms.cache))
-	for ns, kv := range ms.cache {
-		nsCopy := make(map[string][]byte, len(kv))
-		for k, v := range kv {
-			nsCopy[k] = v
-		}
-		cacheCopy[ns] = nsCopy
-	}
-
-	cacheTTLCopy := make(map[string]map[string]int64, len(ms.cacheTTL))
-	for ns, kv := range ms.cacheTTL {
-		nsCopy := make(map[string]int64, len(kv))
-		for k, v := range kv {
-			nsCopy[k] = v.UnixMilli()
-		}
-		cacheTTLCopy[ns] = nsCopy
-	}
+	cacheCopy, cacheTTLCopy, cacheTimestampCopy, cacheNodeCopy := ms.copyCacheLocked()
 
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
 		Cache:            cacheCopy,
 		CacheTTL:         cacheTTLCopy,
+		CacheTimestamp:   cacheTimestampCopy,
+		CacheNode:        cacheNodeCopy,
 	}
 }
 
 // MergeState merges a peer's state into this node's live state using each
-// primitive's real CRDT merge: GCounter and GSet merge is commutative,
+// primitive's real CRDT merge. GCounter and GSet merge is commutative,
 // associative, and idempotent, so it is safe to apply the same peer state
-// more than once or in any order. Cache entries have no per-key vector
-// clock in this implementation, so cache merge is a conservative union:
-// a peer's entry is only adopted for a key this node doesn't already have.
-// This means two nodes independently overwriting the *same* cache key
-// between gossip rounds will not converge to a single winner the way the
-// GCounter/GSet-backed primitives do -- a known, documented limitation
-// rather than a full CRDT (a per-key Lamport/vector clock would be needed
-// to resolve that correctly, matching what SortedSet already does).
+// more than once or in any order. Cache is a real LWW-register CRDT: for a
+// key present on both sides, the entry with the later Timestamp wins, with
+// Node breaking an exact tie (using the same node ID on both sides of a
+// comparison always breaks the tie the same way, so this is deterministic
+// and order-independent) -- this converges two nodes' concurrent writes to
+// the *same* key to a single answer, the same way GCounter/GSet already do,
+// which the previous conservative-union merge (peer only filled in keys
+// the local side lacked) did not.
 func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	if peer == nil {
 		return
@@ -923,21 +959,58 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 
 	for ns, kv := range peer.Cache {
 		if _, exists := ms.cache[ns]; !exists {
-			ms.cache[ns] = make(map[string][]byte)
-			ms.cacheTTL[ns] = make(map[string]time.Time)
+			ms.cache[ns] = make(map[string]*cacheEntry)
 		}
 		for k, v := range kv {
-			if _, exists := ms.cache[ns][k]; exists {
+			var peerTimestamp int64
+			var peerNode string
+			if peer.CacheTimestamp != nil {
+				peerTimestamp = peer.CacheTimestamp[ns][k]
+			}
+			if peer.CacheNode != nil {
+				peerNode = peer.CacheNode[ns][k]
+			}
+
+			local, exists := ms.cache[ns][k]
+			if exists && !cacheEntryLess(local.Timestamp, local.Node, peerTimestamp, peerNode) {
+				// !(local < peer), i.e. local is newer than or exactly
+				// equal to peer's version -- nothing to change. Only
+				// replace local when peer is strictly newer (local < peer).
 				continue
 			}
-			ms.cache[ns][k] = v
+
+			peerEntry := &cacheEntry{Value: v, Timestamp: peerTimestamp, Node: peerNode}
+			var expiresAtMs int64
 			if peer.CacheTTL != nil {
 				if ttlMs, ok := peer.CacheTTL[ns][k]; ok && ttlMs > 0 {
-					ms.cacheTTL[ns][k] = time.UnixMilli(ttlMs)
+					peerEntry.ExpiresAt = time.UnixMilli(ttlMs)
+					expiresAtMs = ttlMs
 				}
 			}
+			ms.cache[ns][k] = peerEntry
+
+			// Persist the adopted value to this node's own WAL too, under
+			// its original version (peerTimestamp), not a merge-time
+			// stamp -- otherwise it only lives in memory, and this node's
+			// own next restart would recover its own older local write
+			// instead of what gossip already converged it to. Confirmed
+			// live: without this, a crash on the node that merely
+			// *received* a merge (not the one that made the winning
+			// write) reverted to its own stale value on restart.
+			ms.persistence.LogOperation("set", k, string(v), ns, expiresAtMs, peerNode, peerTimestamp)
 		}
 	}
+}
+
+// cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,
+// nodeB) in the cache LWW-register's version order: primarily by
+// Timestamp, Node breaking an exact tie. Used to decide, during a merge,
+// whether an incoming entry is newer than what's already there.
+func cacheEntryLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
+	if tsA != tsB {
+		return tsA < tsB
+	}
+	return nodeA < nodeB
 }
 
 // boolMap converts a GSet snapshot ([]string) into the map[string]bool
@@ -1133,11 +1206,10 @@ func (ms *MeshStore) backgroundCleanup() {
 		case <-ticker.C:
 			ms.mu.Lock()
 			now := time.Now()
-			for ns, ttlMap := range ms.cacheTTL {
-				for key, expiry := range ttlMap {
-					if now.After(expiry) {
-						delete(ms.cache[ns], key)
-						delete(ttlMap, key)
+			for _, kv := range ms.cache {
+				for key, entry := range kv {
+					if !entry.ExpiresAt.IsZero() && now.After(entry.ExpiresAt) {
+						delete(kv, key)
 					}
 				}
 			}

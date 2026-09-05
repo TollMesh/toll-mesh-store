@@ -8,6 +8,63 @@ import (
 	"github.com/toll-mesh/store/core"
 )
 
+// TestMergedCacheValueSurvivesRestart is the regression test for a real gap
+// found while live-verifying the cache LWW-register CRDT merge:
+// MergeState updated ms.cache in memory but never called
+// PersistenceEngine.LogOperation, so a value this node only *learned via
+// gossip* (as opposed to wrote itself) was never durable -- a crash on the
+// receiving node reverted it to its own older local write on restart,
+// silently undoing convergence that had already happened. Confirmed live
+// against two real server processes before writing this test.
+func TestMergedCacheValueSurvivesRestart(t *testing.T) {
+	ctx := context.Background()
+	dataDir1 := t.TempDir()
+
+	node1, err := NewMeshStore(&core.ClusterConfig{NodeName: "node-1", DataDir: dataDir1})
+	if err != nil {
+		t.Fatalf("NewMeshStore(node1) failed: %v", err)
+	}
+	node2, err := NewMeshStore(&core.ClusterConfig{NodeName: "node-2", DataDir: t.TempDir()})
+	if err != nil {
+		t.Fatalf("NewMeshStore(node2) failed: %v", err)
+	}
+	defer node2.Close()
+
+	if err := node1.Set(ctx, "shared", "key", []byte("from-node1-first"), 0); err != nil {
+		t.Fatalf("node1 Set failed: %v", err)
+	}
+	time.Sleep(2 * time.Millisecond) // ensure a strictly later wall-clock write
+	if err := node2.Set(ctx, "shared", "key", []byte("from-node2-later"), 0); err != nil {
+		t.Fatalf("node2 Set failed: %v", err)
+	}
+
+	// Merge node2's state into node1 directly (skipping the HTTP/gossip
+	// transport, which api/gossip_integration_test.go already covers) --
+	// this is exactly what a real gossip round does under the hood.
+	node1.MergeState(node2.GetState())
+
+	value, exists, err := node1.Get(ctx, "shared", "key")
+	if err != nil || !exists || string(value) != "from-node2-later" {
+		t.Fatalf("node1 after merge: shared/key = %q exists=%v err=%v, want \"from-node2-later\"", value, exists, err)
+	}
+
+	if err := node1.Close(); err != nil {
+		t.Fatalf("node1 Close failed: %v", err)
+	}
+
+	// Simulate a restart: a brand new MeshStore on node1's own DataDir.
+	restarted, err := NewMeshStore(&core.ClusterConfig{NodeName: "node-1", DataDir: dataDir1})
+	if err != nil {
+		t.Fatalf("NewMeshStore (restarted node1) failed: %v", err)
+	}
+	defer restarted.Close()
+
+	value, exists, err = restarted.Get(ctx, "shared", "key")
+	if err != nil || !exists || string(value) != "from-node2-later" {
+		t.Fatalf("node1 after restart: shared/key = %q exists=%v err=%v, want \"from-node2-later\" (the merged value, not node1's own stale write)", value, exists, err)
+	}
+}
+
 // TestRecoverFromWALWithoutSnapshot is the regression test for a real gap:
 // MeshStore.Set/Consume/Seen never called the WAL's write method at all, so
 // a fresh MeshStore pointed at the same DataDir as a previous, never-

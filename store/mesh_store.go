@@ -905,6 +905,13 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 
 	cacheCopy, cacheTTLCopy, cacheTimestampCopy, cacheNodeCopy := ms.copyCacheLocked()
 
+	ms.zsetsMu.RLock()
+	sortedSets := make(map[string][]sortedset.SortedSetMember, len(ms.zsets))
+	for name, zs := range ms.zsets {
+		sortedSets[name] = zs.Snapshot()
+	}
+	ms.zsetsMu.RUnlock()
+
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
@@ -912,6 +919,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		CacheTTL:         cacheTTLCopy,
 		CacheTimestamp:   cacheTimestampCopy,
 		CacheNode:        cacheNodeCopy,
+		SortedSets:       sortedSets,
 	}
 }
 
@@ -999,6 +1007,15 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 			// write) reverted to its own stale value on restart.
 			ms.persistence.LogOperation("set", k, string(v), ns, expiresAtMs, peerNode, peerTimestamp)
 		}
+	}
+
+	// Sorted sets: the first of the ten remaining feature groups (beyond
+	// the original three primitives) to get gossip replication. Each
+	// set's own Merge already implements a real (score, timestamp, node)
+	// CRDT conflict resolution -- MergeSnapshot just feeds it the
+	// wire-format member list gossip actually carries.
+	for name, members := range peer.SortedSets {
+		ms.getOrCreateZSet(name).MergeSnapshot(members)
 	}
 }
 

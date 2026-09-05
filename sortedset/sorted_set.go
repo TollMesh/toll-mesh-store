@@ -238,6 +238,34 @@ func (zs *SortedSet) Card() int64 {
 	return count
 }
 
+// Snapshot returns a copy of every member, including tombstoned
+// (soft-deleted) ones -- gossip replication needs tombstones too, so a
+// delete actually propagates to peers instead of just being invisible
+// local bookkeeping.
+func (zs *SortedSet) Snapshot() []SortedSetMember {
+	zs.mu.RLock()
+	defer zs.mu.RUnlock()
+
+	out := make([]SortedSetMember, 0, len(zs.MemberMap))
+	for _, m := range zs.MemberMap {
+		out = append(out, *m)
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output using the exact same CRDT
+// rules as Merge -- it just takes the wire-friendly slice form (what
+// actually travels over gossip) instead of a live *SortedSet, by wrapping
+// it in one just long enough to reuse Merge's logic rather than
+// duplicating it.
+func (zs *SortedSet) MergeSnapshot(members []SortedSetMember) {
+	memberMap := make(map[string]*SortedSetMember, len(members))
+	for i := range members {
+		memberMap[members[i].Member] = &members[i]
+	}
+	zs.Merge(&SortedSet{MemberMap: memberMap})
+}
+
 // Merge performs a CRDT merge with another sorted set
 func (zs *SortedSet) Merge(other *SortedSet) {
 	zs.mu.Lock()

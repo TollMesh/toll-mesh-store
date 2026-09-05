@@ -159,4 +159,14 @@ type MeshStoreState struct {
 	// writes to the *same* key the way GCounter/GSet do.
 	CacheTimestamp map[string]map[string]int64
 	CacheNode      map[string]map[string]string
+
+	// SortedSets holds every replicated sorted set's full member snapshot
+	// (via sortedset.SortedSet.Snapshot, including tombstoned members so
+	// deletes propagate too), keyed by set name. Merging uses
+	// sortedset.SortedSet.MergeSnapshot, which reuses SortedSet's existing
+	// (score, timestamp, node) CRDT conflict resolution -- this is the
+	// first of the eleven feature groups added after the original three
+	// primitives to gain gossip replication; see architecture.md for which
+	// of the other ten still don't.
+	SortedSets map[string][]sortedset.SortedSetMember
 }

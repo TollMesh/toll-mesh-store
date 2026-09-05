@@ -195,6 +195,82 @@ func TestGossipCacheLWWConvergesOnConcurrentSameKeyWrites(t *testing.T) {
 	}
 }
 
+// TestGossipReplicatesSortedSets is the regression test for the first of
+// the ten remaining (post-original-three-primitives) feature groups to
+// gain gossip replication: sorted sets. Verifies both directions --
+// a member added on one node appears on the other, and a member removed
+// (tombstoned) on one node is removed on the other too, not just that
+// additions propagate.
+func TestGossipReplicatesSortedSets(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if err := node1.store.ZAdd(ctx, "leaderboard", "alice", 100); err != nil {
+		t.Fatalf("node1 ZAdd failed: %v", err)
+	}
+	if err := node2.store.ZAdd(ctx, "leaderboard", "bob", 50); err != nil {
+		t.Fatalf("node2 ZAdd failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		lastErr = nil
+		for _, n := range []*gossipTestNode{node1, node2} {
+			if score, exists := n.store.ZScore(ctx, "leaderboard", "alice"); !exists || score != 100 {
+				lastErr = fmt.Errorf("%s: ZScore(alice) = %v exists=%v, want 100/true", n.name, score, exists)
+				break
+			}
+			if score, exists := n.store.ZScore(ctx, "leaderboard", "bob"); !exists || score != 50 {
+				lastErr = fmt.Errorf("%s: ZScore(bob) = %v exists=%v, want 50/true", n.name, score, exists)
+				break
+			}
+		}
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("sorted set additions did not converge within deadline: %v", lastErr)
+	}
+
+	// Now remove bob on node2 and confirm the tombstone propagates to
+	// node1 too -- a real CRDT merge must replicate deletes, not just
+	// additions.
+	if err := node2.store.ZRem(ctx, "leaderboard", "bob"); err != nil {
+		t.Fatalf("node2 ZRem failed: %v", err)
+	}
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		lastErr = nil
+		for _, n := range []*gossipTestNode{node1, node2} {
+			if _, exists := n.store.ZScore(ctx, "leaderboard", "bob"); exists {
+				lastErr = fmt.Errorf("%s: ZScore(bob) still exists after ZRem on node2", n.name)
+				break
+			}
+		}
+		if lastErr == nil {
+			break
+		}
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("sorted set removal did not converge within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

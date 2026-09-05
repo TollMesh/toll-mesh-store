@@ -16,8 +16,13 @@ jobs:
         with:
           go-version: '1.25'
       - name: Install TinyGo (for scripting package tests; its release tarball bundles wasm-opt too)
+        # v0.34.0 only supports host Go 1.19-1.23 and rejects anything
+        # newer at compile time ("requires go version 1.19 through 1.23,
+        # got go1.25") -- go.mod requires 1.25, so every WASM test failed
+        # on first CI run. v0.42.0 (same version used for all of this
+        # session's local verification) supports current Go.
         run: |
-          curl -L -o tinygo.tar.gz https://github.com/tinygo-org/tinygo/releases/download/v0.34.0/tinygo0.34.0.linux-amd64.tar.gz
+          curl -L -o tinygo.tar.gz https://github.com/tinygo-org/tinygo/releases/download/v0.42.0/tinygo0.42.0.linux-amd64.tar.gz
           tar -xzf tinygo.tar.gz -C "$HOME"
           echo "$HOME/tinygo/bin" >> "$GITHUB_PATH"
       - run: go build ./...
@@ -103,7 +108,9 @@ jobs:
           bundler-cache: false
       - name: Install dependencies
         working-directory: sdks/ruby
-        run: gem install rspec -v "~> 3.11"
+        run: |
+          gem install rspec -v "~> 3.11"
+          gem install httpclient
       - name: Run specs
         working-directory: sdks/ruby
         run: rspec -I lib

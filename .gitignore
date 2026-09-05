@@ -93,3 +93,6 @@ site/
 # Runtime persistence output (WAL segments, snapshots) -- not repo content
 /data/
 /*/data/
+
+# RSpec's example-status persistence file (local test-run cache)
+.rspec_status

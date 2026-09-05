@@ -84,7 +84,15 @@ func (pe *PersistenceEngine) LogOperation(op string, key string, value interface
 	defer pe.mu.Unlock()
 
 	entry := WALEntry{
-		Timestamp: time.Now().UnixMilli(),
+		// Nanosecond resolution matters here: this timestamp is compared
+		// against a snapshot's timestamp in ReplayWAL to decide whether an
+		// entry is "already covered" by that snapshot. Millisecond
+		// resolution let a snapshot and the very next write -- executed
+		// as two separate statements immediately after each other, e.g.
+		// in a test -- land in the same millisecond, making a real write
+		// silently indistinguishable from "before the snapshot" and
+		// dropped by recovery. Confirmed live via a failing test.
+		Timestamp: time.Now().UnixNano(),
 		Operation: op,
 		Key:       key,
 		Value:     value,
@@ -110,7 +118,9 @@ func (pe *PersistenceEngine) CreateSnapshot(snapshot *Snapshot) error {
 	pe.mu.Lock()
 	defer pe.mu.Unlock()
 
-	snapshot.Timestamp = time.Now().UnixMilli()
+	// Same nanosecond-resolution reasoning as LogOperation's Timestamp --
+	// this value is the cutoff ReplayWAL filters against.
+	snapshot.Timestamp = time.Now().UnixNano()
 
 	snapshotFile := filepath.Join(
 		pe.snapshotPath,

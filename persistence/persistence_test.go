@@ -42,7 +42,7 @@ func TestReplayWALFiltersOldEntries(t *testing.T) {
 	defer pe.Close()
 
 	pe.LogOperation("set", "key1", []byte("value1"), "ns1", 0)
-	cutoff := time.Now().UnixMilli()
+	cutoff := time.Now().UnixNano()
 	time.Sleep(5 * time.Millisecond)
 	pe.LogOperation("set", "key2", []byte("value2"), "ns1", 0)
 

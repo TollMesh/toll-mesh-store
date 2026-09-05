@@ -6,14 +6,17 @@ import (
 	"time"
 )
 
-// BenchmarkWALAppend measures the write-path cost of a single WAL entry
-// append (fsync-adjacent disk write of a checksummed, length-prefixed
-// record). This is NOT currently on MeshStore's hot path: MeshStore.Set/
-// Consume/Seen never call PersistenceEngine.LogOperation, so today this
-// cost is paid only during an explicit CreateSnapshot/RestoreFromLatest
-// Snapshot cycle, not on every write as the WAL's existence might suggest.
-// This benchmark measures what wiring LogOperation onto the hot path would
-// actually cost, since that number didn't exist anywhere before.
+// This file benchmarks WriteAheadLog (checksummed, length-prefixed, segment-
+// rotating), which is a *different, unused* implementation from the one
+// MeshStore.Set/Consume/Seen actually call: PersistenceEngine.LogOperation
+// in persistence.go, a simpler JSON-line-per-entry append with no
+// checksumming or segment rotation. This package holds two independent WAL
+// implementations; only PersistenceEngine's is wired to MeshStore (see
+// BenchmarkLogOperation below for that one's numbers) -- WriteAheadLog is
+// exercised only by its own tests and this benchmark.
+//
+// BenchmarkWALAppend measures the write-path cost of a single WriteAheadLog
+// entry append (disk write of a checksummed, length-prefixed record).
 func BenchmarkWALAppend(b *testing.B) {
 	dir := b.TempDir()
 	wal, err := NewWriteAheadLog(dir, WALConfig{MaxSegmentSize: 64 << 20, RotationTime: time.Hour})
@@ -64,6 +67,52 @@ func BenchmarkWALAppendParallel(b *testing.B) {
 			}
 			if err := wal.Append(entry); err != nil {
 				b.Fatalf("Append failed: %v", err)
+			}
+			i++
+		}
+	})
+}
+
+// BenchmarkLogOperation measures PersistenceEngine.LogOperation -- the WAL
+// implementation actually called from MeshStore.Set/Consume/Seen on every
+// successful write. Unlike WriteAheadLog above, this is genuinely on the
+// hot path today.
+func BenchmarkLogOperation(b *testing.B) {
+	dir := b.TempDir()
+	pe, err := NewPersistenceEngine(dir+"/wal", dir+"/snapshots", time.Hour)
+	if err != nil {
+		b.Fatalf("NewPersistenceEngine failed: %v", err)
+	}
+	defer pe.Close()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	for i := 0; i < b.N; i++ {
+		if err := pe.LogOperation("set", "bench-key", "bench-value-payload", "bench", 0); err != nil {
+			b.Fatalf("LogOperation failed: %v", err)
+		}
+	}
+}
+
+// BenchmarkLogOperationParallel measures LogOperation under concurrent
+// writers, matching how MeshStore actually calls it (one call per request,
+// many requests in flight at once).
+func BenchmarkLogOperationParallel(b *testing.B) {
+	dir := b.TempDir()
+	pe, err := NewPersistenceEngine(dir+"/wal", dir+"/snapshots", time.Hour)
+	if err != nil {
+		b.Fatalf("NewPersistenceEngine failed: %v", err)
+	}
+	defer pe.Close()
+
+	b.ResetTimer()
+	b.ReportAllocs()
+	b.RunParallel(func(pb *testing.PB) {
+		i := 0
+		for pb.Next() {
+			key := fmt.Sprintf("bench-key-%d", i)
+			if err := pe.LogOperation("set", key, "bench-value-payload", "bench", 0); err != nil {
+				b.Fatalf("LogOperation failed: %v", err)
 			}
 			i++
 		}

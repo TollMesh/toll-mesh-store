@@ -350,7 +350,12 @@ module TollMeshCache
     end
 
     def close
-      @http.close if @http
+      # HTTPClient (the httpclient gem) has no #close method -- calling it
+      # raised NoMethodError on every single client.close call, which is
+      # documented as the normal cleanup pattern (see README/examples).
+      # #reset_all is the gem's actual method for tearing down its
+      # keep-alive sessions.
+      @http.reset_all if @http
     end
 
     private

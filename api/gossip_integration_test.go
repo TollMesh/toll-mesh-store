@@ -651,6 +651,49 @@ func main() {
 	}
 }
 
+// TestGossipReplicatesClusterMetrics verifies operations recorded on one
+// node are visible in a peer's cluster-wide metrics view (GetClusterMetrics)
+// after gossip converges -- a real GCounter-shaped merge: node1's own
+// activity shows up as node1's slot in node2's per-node breakdown, summed
+// into the cluster total alongside node2's own activity.
+func TestGossipReplicatesClusterMetrics(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if _, err := node1.store.Consume(ctx, "gossip-metrics-key", 10, time.Minute); err != nil {
+		t.Fatalf("node1 Consume failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		cluster := node2.store.GetClusterMetrics(ctx)
+		consumeTotal, ok := cluster["consume_total"].(map[string]interface{})
+		if ok {
+			byNode, _ := consumeTotal["by_node"].(map[string]int64)
+			if byNode["node-1"] == 1 {
+				lastErr = nil
+				break
+			}
+		}
+		lastErr = fmt.Errorf("node2 GetClusterMetrics()[\"consume_total\"] = %+v, want node-1's count to be 1", cluster["consume_total"])
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("cluster metrics did not converge to node2 within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

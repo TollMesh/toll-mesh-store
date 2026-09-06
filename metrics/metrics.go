@@ -197,6 +197,29 @@ func (m *Metrics) GetStats() map[string]interface{} {
 	return stats
 }
 
+// Snapshot returns this node's current value for every monotonic counter
+// (not the latency ring buffers, which have no meaningful cross-node
+// merge -- see MeshStore's doc comment on cluster metrics for why), for
+// gossip replication as this node's own contribution to a per-metric,
+// per-node GCounter-style aggregation.
+func (m *Metrics) Snapshot() map[string]int64 {
+	return map[string]int64{
+		"consume_total":       atomic.LoadInt64(&m.consumeTotal),
+		"consume_allowed":     atomic.LoadInt64(&m.consumeAllowed),
+		"consume_denied":      atomic.LoadInt64(&m.consumeDenied),
+		"seen_total":          atomic.LoadInt64(&m.seenTotal),
+		"seen_replays":        atomic.LoadInt64(&m.seenReplays),
+		"get_total":           atomic.LoadInt64(&m.getTotal),
+		"get_hits":            atomic.LoadInt64(&m.getHits),
+		"get_misses":          atomic.LoadInt64(&m.getMisses),
+		"set_total":           atomic.LoadInt64(&m.setTotal),
+		"cache_evictions":     atomic.LoadInt64(&m.cacheEvictions),
+		"gossip_messages_in":  atomic.LoadInt64(&m.gossipMessagesIn),
+		"gossip_messages_out": atomic.LoadInt64(&m.gossipMessagesOut),
+		"gossip_errors":       atomic.LoadInt64(&m.gossipErrors),
+	}
+}
+
 // calculateLatencyStats calculates latency statistics
 func (m *Metrics) calculateLatencyStats(latencies []int64) map[string]interface{} {
 	if len(latencies) == 0 {

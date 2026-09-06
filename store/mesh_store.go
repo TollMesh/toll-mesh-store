@@ -63,6 +63,14 @@ type MeshStore struct {
 	wasmUnavailable error                 // reason wasmEngine is nil, if it is
 	searchEngine    *search.HybridSearchEngine
 	metricsColl     *metrics.Metrics
+	// clusterMetrics accumulates every node's own reported counter values
+	// (via metrics.Metrics.Snapshot), keyed by metric name then node ID --
+	// a real GCounter-shaped CRDT: this node only ever writes its own
+	// slot (in GetState), and MergeState takes the max per (metric, node)
+	// pair from peers. Guarded by mu, the same lock protecting cache/
+	// rateLimiters, since it's the same "small map mutated under the
+	// store's main lock" shape as those.
+	clusterMetrics map[string]map[string]int64
 }
 
 // NewMeshStore creates a new MeshStore instance.
@@ -97,6 +105,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		pipelines:        scripting.NewEngine(50, 30*time.Second),
 		searchEngine:     search.NewHybridSearchEngine(),
 		metricsColl:      metrics.NewMetrics(),
+		clusterMetrics:   make(map[string]map[string]int64),
 	}
 
 	// WASM scripting requires the external TinyGo toolchain, which is a
@@ -893,15 +902,31 @@ func (ms *MeshStore) GetPersistenceStats(ctx context.Context) map[string]interfa
 // GetState and MergeState are the two halves of this node's multi-node
 // replication: a peer periodically fetches this node's GetState() over
 // HTTP (see api/http.go's /internal/state) and feeds the result into its
-// own MergeState. Only the original three CRDT-backed primitives (rate
-// limiting, replay protection, cache) are covered -- the eight feature
-// groups added later (Pub/Sub, Transactions, Persistence, Pipelines, WASM
-// Scripting, Search, Ranking, Metrics) are not part of this state and
-// remain single-node only.
+// own MergeState. The original three CRDT-backed primitives (rate
+// limiting, replay protection, cache) plus Sorted Sets, Streams,
+// Pipelines, Search, Job Queues, Pub/Sub, Transactions, WASM Scripting,
+// and (the monotonic-counter subset of) Metrics are covered -- Persistence
+// and Ranking are not part of this state and remain single-node only (see
+// docs/architecture.md's gossip section for why each of those doesn't
+// fit).
 
 // GetState returns a snapshot of this node's replicated CRDT state, for a
 // peer to merge into its own via MergeState.
 func (ms *MeshStore) GetState() *core.MeshStoreState {
+	// Stamp this node's own current counter values into clusterMetrics
+	// before taking the read lock below -- a short, separate write,
+	// since mu is a plain sync.RWMutex (not reentrant) and the rest of
+	// this method only ever reads.
+	localMetrics := ms.metricsColl.Snapshot()
+	ms.mu.Lock()
+	for name, value := range localMetrics {
+		if ms.clusterMetrics[name] == nil {
+			ms.clusterMetrics[name] = make(map[string]int64)
+		}
+		ms.clusterMetrics[name][ms.config.NodeName] = value
+	}
+	ms.mu.Unlock()
+
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
 
@@ -935,6 +960,15 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	pubsubMessages := ms.pubsubBroker.Snapshot()
 	txns := ms.txnManager.Snapshot()
 
+	clusterMetricsCopy := make(map[string]map[string]int64, len(ms.clusterMetrics))
+	for name, nodeCounts := range ms.clusterMetrics {
+		inner := make(map[string]int64, len(nodeCounts))
+		for node, count := range nodeCounts {
+			inner[node] = count
+		}
+		clusterMetricsCopy[name] = inner
+	}
+
 	// wasmEngine is nil on a node where TinyGo wasn't found at startup --
 	// nothing to snapshot in that case (see MergeState's matching nil
 	// check on the receiving side).
@@ -958,6 +992,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		PubSubMessages:   pubsubMessages,
 		Transactions:     txns,
 		WasmScripts:      wasmScripts,
+		Metrics:          clusterMetricsCopy,
 	}
 }
 
@@ -1072,6 +1107,21 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 
 	if ms.wasmEngine != nil {
 		ms.wasmEngine.MergeSnapshot(peer.WasmScripts)
+	}
+
+	// Metrics: a real GCounter-shaped merge -- max per (metric, node) pair,
+	// same rule as RateLimiters' core.GCounter.Merge, just inlined here
+	// since this is a map of independent per-metric counters rather than
+	// one GCounter instance per rate-limit key.
+	for name, nodeCounts := range peer.Metrics {
+		if ms.clusterMetrics[name] == nil {
+			ms.clusterMetrics[name] = make(map[string]int64)
+		}
+		for node, count := range nodeCounts {
+			if current, exists := ms.clusterMetrics[name][node]; !exists || count > current {
+				ms.clusterMetrics[name][node] = count
+			}
+		}
 	}
 }
 
@@ -1273,6 +1323,43 @@ func (ms *MeshStore) GetMetrics(ctx context.Context) map[string]interface{} {
 // GetPrometheusMetrics returns metrics formatted for Prometheus scraping.
 func (ms *MeshStore) GetPrometheusMetrics(ctx context.Context) string {
 	return ms.metricsColl.PrometheusMetrics()
+}
+
+// GetClusterMetrics returns, for every monotonic counter gossip has
+// converged so far, the cluster-wide total (the sum of every known node's
+// own count) alongside the per-node breakdown -- unlike GetMetrics, which
+// only ever reports this node's own local activity. This node's own latest
+// counts are folded in first, so a query against a node that hasn't
+// gossiped in a while still reports accurate numbers for itself, just
+// possibly-stale ones for peers. Latency percentiles have no place here --
+// see MeshStoreState.Metrics's doc comment for why they aren't merged.
+func (ms *MeshStore) GetClusterMetrics(ctx context.Context) map[string]interface{} {
+	localMetrics := ms.metricsColl.Snapshot()
+
+	ms.mu.Lock()
+	for name, value := range localMetrics {
+		if ms.clusterMetrics[name] == nil {
+			ms.clusterMetrics[name] = make(map[string]int64)
+		}
+		ms.clusterMetrics[name][ms.config.NodeName] = value
+	}
+
+	result := make(map[string]interface{}, len(ms.clusterMetrics))
+	for name, nodeCounts := range ms.clusterMetrics {
+		var total int64
+		perNode := make(map[string]int64, len(nodeCounts))
+		for node, count := range nodeCounts {
+			total += count
+			perNode[node] = count
+		}
+		result[name] = map[string]interface{}{
+			"total":   total,
+			"by_node": perNode,
+		}
+	}
+	ms.mu.Unlock()
+
+	return result
 }
 
 // backgroundCleanup removes expired cache entries.

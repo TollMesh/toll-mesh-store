@@ -110,6 +110,11 @@ type Store interface {
 	// Metrics
 	GetMetrics(ctx context.Context) map[string]interface{}
 	GetPrometheusMetrics(ctx context.Context) string
+	// GetClusterMetrics returns cluster-wide totals (sum across every
+	// known node) plus a per-node breakdown for each monotonic counter
+	// gossip has converged, unlike GetMetrics which only reports this
+	// node's own local activity.
+	GetClusterMetrics(ctx context.Context) map[string]interface{}
 }
 
 // ConsumeResult represents the outcome of a rate limit check.
@@ -243,4 +248,22 @@ type MeshStoreState struct {
 	// comment). Nil/empty on, and never merged into, a node where TinyGo
 	// wasn't found at startup (WasmEngine is nil there).
 	WasmScripts []scripting.CompiledScript
+
+	// Metrics holds every monotonic operational counter's per-node
+	// contribution (via metrics.Metrics.Snapshot), keyed by metric name
+	// then node ID: Metrics["consume_total"]["node-2"] is node-2's own
+	// consume count, as last reported. This is a real CRDT, the same
+	// grow-only-counter pattern as RateLimiters (core.GCounter) -- each
+	// node only ever writes its own slot, and merging takes the max
+	// per-(metric, node) pair, so a value can only grow, never regress or
+	// double-count no matter the gossip order. The cluster-wide total for
+	// a metric is the sum of its per-node values (see
+	// MeshStore.GetClusterMetrics). Latency percentiles are deliberately
+	// NOT included -- merging p50/p99 computed independently on different
+	// nodes' different sample sets doesn't produce a meaningful cluster
+	// p50/p99 (this is a real statistical limitation, not a shortcut:
+	// Prometheus itself doesn't merge histograms this way either, it
+	// aggregates raw buckets, which this project's ring-buffer sampling
+	// doesn't preserve).
+	Metrics map[string]map[string]int64
 }

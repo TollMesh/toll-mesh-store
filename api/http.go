@@ -177,6 +177,7 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 	// Metrics
 	hs.mux.HandleFunc("/metrics", hs.handleMetrics)
 	hs.mux.HandleFunc("/metrics/prometheus", hs.handlePrometheusMetrics)
+	hs.mux.HandleFunc("/metrics/cluster", hs.handleClusterMetrics)
 
 	hs.server = &http.Server{
 		Addr:    addr,
@@ -1611,4 +1612,12 @@ func (hs *HTTPServer) handlePrometheusMetrics(w http.ResponseWriter, r *http.Req
 	}
 	w.Header().Set("Content-Type", "text/plain; version=0.0.4")
 	w.Write([]byte(hs.store.GetPrometheusMetrics(r.Context())))
+}
+
+func (hs *HTTPServer) handleClusterMetrics(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, hs.store.GetClusterMetrics(r.Context()))
 }

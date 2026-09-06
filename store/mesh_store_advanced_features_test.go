@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/toll-mesh/store/core"
 	"github.com/toll-mesh/store/ranking"
 	"github.com/toll-mesh/store/scripting"
 	"github.com/toll-mesh/store/search"
@@ -215,6 +216,57 @@ func TestMeshStore_Metrics_RecordsRealOperations(t *testing.T) {
 	prom := s.GetPrometheusMetrics(ctx)
 	if len(prom) == 0 {
 		t.Error("expected non-empty Prometheus output")
+	}
+}
+
+// TestMeshStore_ClusterMetrics_MergesPerNodeCountsAsGCounter is the
+// regression test for Metrics gossip replication: MergeState must combine
+// two nodes' own counter values into a per-node breakdown (real GCounter
+// semantics -- each node's slot is independent, so the cluster total is
+// their sum), and a later merge with a lower/stale count for an
+// already-known node must not regress it.
+func TestMeshStore_ClusterMetrics_MergesPerNodeCountsAsGCounter(t *testing.T) {
+	ctx := context.Background()
+
+	node1 := newTestStore(t)
+	node1.Consume(ctx, "key", 10, time.Minute)
+	node1.Consume(ctx, "key", 10, time.Minute)
+
+	node2Config := &core.ClusterConfig{
+		NodeName: "node2",
+		BindAddr: "127.0.0.1",
+		BindPort: 8001,
+		DataDir:  t.TempDir(),
+	}
+	node2, err := NewMeshStore(node2Config)
+	if err != nil {
+		t.Fatalf("failed to create node2: %v", err)
+	}
+	t.Cleanup(func() { node2.Close() })
+	node2.Consume(ctx, "key", 10, time.Minute)
+
+	node2.MergeState(node1.GetState())
+
+	cluster := node2.GetClusterMetrics(ctx)
+	consumeTotal, ok := cluster["consume_total"].(map[string]interface{})
+	if !ok {
+		t.Fatalf("expected consume_total entry, got %+v", cluster["consume_total"])
+	}
+	if consumeTotal["total"] != int64(3) {
+		t.Fatalf("expected cluster consume_total = 3 (2 from node1 + 1 from node2), got %v", consumeTotal["total"])
+	}
+	byNode := consumeTotal["by_node"].(map[string]int64)
+	if byNode["node1"] != 2 || byNode["node2"] != 1 {
+		t.Fatalf("expected per-node breakdown node1=2 node2=1, got %+v", byNode)
+	}
+
+	// A stale re-merge (node1's count hasn't grown) must not regress
+	// node2's already-known value for node1.
+	node2.MergeState(node1.GetState())
+	cluster = node2.GetClusterMetrics(ctx)
+	consumeTotal = cluster["consume_total"].(map[string]interface{})
+	if consumeTotal["total"] != int64(3) {
+		t.Fatalf("expected cluster consume_total to stay 3 after a stale re-merge, got %v", consumeTotal["total"])
 	}
 }
 

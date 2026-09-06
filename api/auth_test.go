@@ -80,6 +80,28 @@ func TestAPIKeyAuth(t *testing.T) {
 	checkProtected("/cache/get?namespace=ns&key=k", "", http.StatusUnauthorized)
 	checkProtected("/cache/get?namespace=ns&key=k", "wrong-key", http.StatusUnauthorized)
 	checkProtected("/cache/get?namespace=ns&key=k", "secret-key", http.StatusOK)
+
+	// /livez and /readyz are orchestrator probe endpoints (Kubernetes
+	// liveness/readiness) and must stay open the same way /health does --
+	// an orchestrator restarting/routing around a node can't be expected
+	// to know a secret either.
+	if code := get(""); code != http.StatusOK { // reuses the /health path helper's shape
+		t.Errorf("/health with no key = %d, want 200", code)
+	}
+	checkOpen := func(path string) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request to %s failed: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode == http.StatusUnauthorized {
+			t.Errorf("%s with no key = %d, want not-unauthorized (should stay open like /health)", path, resp.StatusCode)
+		}
+	}
+	checkOpen("/livez")
+	checkOpen("/readyz")
 }
 
 // TestNoAuthWhenNotConfigured confirms the zero-config default (apiKey ==

@@ -23,8 +23,9 @@ type HTTPServer struct {
 	coordinator   *coordination.GossipCoordinator
 	mux           *http.ServeMux
 	server        *http.Server
-	apiKey        string // if set, required via X-API-Key on every SDK-facing endpoint except /health
+	apiKey        string // if set, required via X-API-Key on every SDK-facing endpoint except /health, /livez, /readyz
 	clusterSecret string // if set, required via X-Cluster-Secret on every /internal/* endpoint
+	healthChecker *HealthChecker
 }
 
 // ConsumeRequest represents a rate limit request
@@ -86,15 +87,19 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 		mux:           http.NewServeMux(),
 		apiKey:        apiKey,
 		clusterSecret: clusterSecret,
+		healthChecker: NewHealthChecker(coordinator),
 	}
 
 	// Register handlers
 	hs.mux.HandleFunc("/health", hs.handleHealth)
+	hs.mux.HandleFunc("/livez", hs.healthChecker.HandleLiveness)
+	hs.mux.HandleFunc("/readyz", hs.healthChecker.HandleReadiness)
 	hs.mux.HandleFunc("/consume", hs.handleConsume)
 	hs.mux.HandleFunc("/seen", hs.handleSeen)
 	hs.mux.HandleFunc("/cache/get", hs.handleCacheGet)
 	hs.mux.HandleFunc("/cache/set", hs.handleCacheSet)
 	hs.mux.HandleFunc("/peers", hs.handlePeers)
+	hs.mux.HandleFunc("/peers/health", hs.handlePeerHealth)
 
 	// Gossip replication transport (node-to-node, not part of the SDK-facing API)
 	hs.mux.HandleFunc("/internal/state", hs.handleInternalState)
@@ -196,9 +201,9 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 // configured. Every SDK has sent an X-API-Key header since it was written,
 // but nothing ever checked it server-side -- every request succeeded
 // regardless of the key's presence or correctness, making the "api_key"
-// config option in all 7 SDKs entirely decorative. /health stays
-// unauthenticated even when apiKey is set, for basic load-balancer/
-// monitoring checks that can't be expected to know a secret. Key
+// config option in all 7 SDKs entirely decorative. /health, /livez, and
+// /readyz stay unauthenticated even when apiKey is set, for basic load-
+// balancer/orchestrator checks that can't be expected to know a secret. Key
 // comparison uses constant-time comparison (crypto/subtle) so this can't
 // leak the correct key's length/prefix via response-timing differences.
 func (hs *HTTPServer) authMiddleware(next http.Handler) http.Handler {
@@ -219,7 +224,7 @@ func (hs *HTTPServer) authMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if r.URL.Path == "/health" {
+		if r.URL.Path == "/health" || r.URL.Path == "/livez" || r.URL.Path == "/readyz" {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -402,6 +407,34 @@ func (hs *HTTPServer) handlePeers(w http.ResponseWriter, r *http.Request) {
 		"peers": peerList,
 		"count": len(peers),
 	})
+}
+
+// handlePeerHealth returns per-peer health tracking (success/failure
+// counts, response time, whether currently considered healthy) -- unlike
+// /peers, which just lists known peer addresses.
+func (hs *HTTPServer) handlePeerHealth(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	infos := hs.coordinator.GetPeerHealth()
+	peerList := make([]map[string]interface{}, len(infos))
+	for i, info := range infos {
+		peerList[i] = map[string]interface{}{
+			"id":               info.Node.ID,
+			"address":          info.Node.Address,
+			"port":             info.Node.Port,
+			"is_healthy":       info.IsHealthy,
+			"failure_count":    info.FailureCount,
+			"last_seen":        info.LastSeen.Format(time.RFC3339),
+			"response_time_ms": info.ResponseTime.Milliseconds(),
+			"successful_pings": info.SuccessfulPings,
+			"failed_pings":     info.FailedPings,
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]interface{}{"peers": peerList})
 }
 
 // handleInternalState serves this node's replicated CRDT state (rate

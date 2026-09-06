@@ -8,139 +8,90 @@ import (
 	"github.com/toll-mesh/store/coordination"
 )
 
-// HealthChecker provides health check functionality
+// HealthChecker backs the /livez and /readyz probe endpoints, distinct
+// from the simple, unconditional /health used by SDKs and load balancers.
+// Liveness answers "is this process itself broken and should be
+// restarted" -- true as long as the process is up and responding at all,
+// since a distributed node isolated from its peers (a network partition)
+// is not the same thing as a broken process, and having Kubernetes (or
+// any orchestrator) kill and restart every partitioned node would turn a
+// partition into a much worse, cascading outage. Readiness answers "is
+// this node currently able to do useful cluster work" -- real logic
+// derived from PeerManager's actual health tracking (see peer_manager.go),
+// not a hardcoded true.
 type HealthChecker struct {
-	coordinator     *coordination.GossipCoordinator
-	peerManager     *coordination.PeerManager
-	failureDetector *coordination.FailureDetector
-	startTime       time.Time
+	coordinator *coordination.GossipCoordinator
+	startTime   time.Time
 }
 
-// HealthStatus represents the health status of the node
+// HealthStatus represents the current liveness status of the node.
 type HealthStatus struct {
-	Status         string                 `json:"status"`
-	NodeID         string                 `json:"node_id"`
-	Uptime         int64                  `json:"uptime_seconds"`
-	Peers          int                    `json:"peers"`
-	HealthyPeers   int                    `json:"healthy_peers"`
-	UnhealthyPeers int                    `json:"unhealthy_peers"`
-	Timestamp      int64                  `json:"timestamp"`
-	Version        string                 `json:"version"`
-	Checks         map[string]CheckResult `json:"checks"`
+	Status    string `json:"status"`
+	NodeID    string `json:"node_id"`
+	Uptime    int64  `json:"uptime_seconds"`
+	Timestamp int64  `json:"timestamp"`
 }
 
-// CheckResult represents the result of a health check
-type CheckResult struct {
-	Status  string                 `json:"status"`
-	Message string                 `json:"message,omitempty"`
-	Details map[string]interface{} `json:"details,omitempty"`
-}
-
-// ReadinessStatus represents the readiness status of the node
+// ReadinessStatus represents the current readiness status of the node.
 type ReadinessStatus struct {
-	Ready  bool                   `json:"ready"`
-	Reason string                 `json:"reason,omitempty"`
-	Checks map[string]CheckResult `json:"checks"`
+	Ready          bool   `json:"ready"`
+	Reason         string `json:"reason,omitempty"`
+	Peers          int    `json:"peers"`
+	HealthyPeers   int    `json:"healthy_peers"`
+	UnhealthyPeers int    `json:"unhealthy_peers"`
 }
 
-// NewHealthChecker creates a new health checker
-func NewHealthChecker(
-	coordinator *coordination.GossipCoordinator,
-	peerManager *coordination.PeerManager,
-	failureDetector *coordination.FailureDetector,
-) *HealthChecker {
+// NewHealthChecker creates a new health checker.
+func NewHealthChecker(coordinator *coordination.GossipCoordinator) *HealthChecker {
 	return &HealthChecker{
-		coordinator:     coordinator,
-		peerManager:     peerManager,
-		failureDetector: failureDetector,
-		startTime:       time.Now(),
+		coordinator: coordinator,
+		startTime:   time.Now(),
 	}
 }
 
-// GetHealthStatus returns the current health status
+// GetHealthStatus returns this node's liveness status -- always healthy
+// if this code is running at all (see doc comment above for why liveness
+// deliberately doesn't factor in peer connectivity).
 func (hc *HealthChecker) GetHealthStatus() *HealthStatus {
-	uptime := int64(time.Since(hc.startTime).Seconds())
-	peers := hc.coordinator.GetPeers()
-	healthyPeers := hc.peerManager.GetHealthyPeers()
-
-	checks := make(map[string]CheckResult)
-
-	// Coordinator check
-	checks["coordinator"] = CheckResult{
-		Status:  "healthy",
-		Message: "Gossip coordinator is running",
-	}
-
-	// Peer manager check
-	peerStats := hc.peerManager.GetStats()
-	checks["peer_manager"] = CheckResult{
-		Status:  "healthy",
-		Message: "Peer manager is operational",
-		Details: peerStats,
-	}
-
-	// Failure detector check
-	fdStats := hc.failureDetector.GetStats()
-	checks["failure_detector"] = CheckResult{
-		Status:  "healthy",
-		Message: "Failure detector is operational",
-		Details: fdStats,
-	}
-
+	nodeID, _ := hc.coordinator.GetStats()["node_id"].(string)
 	return &HealthStatus{
-		Status:         "healthy",
-		NodeID:         hc.coordinator.GetStats()["node_id"].(string),
-		Uptime:         uptime,
-		Peers:          len(peers),
-		HealthyPeers:   len(healthyPeers),
-		UnhealthyPeers: len(peers) - len(healthyPeers),
-		Timestamp:      time.Now().Unix(),
-		Version:        "1.0.0",
-		Checks:         checks,
+		Status:    "healthy",
+		NodeID:    nodeID,
+		Uptime:    int64(time.Since(hc.startTime).Seconds()),
+		Timestamp: time.Now().Unix(),
 	}
 }
 
-// GetReadinessStatus returns the readiness status
+// GetReadinessStatus returns this node's readiness status. A standalone
+// node with no configured peers is always ready (there's no cluster
+// connectivity to lose). A node with configured peers is ready as long as
+// at least one is currently healthy (per PeerManager's real health
+// tracking, fed by both performGossip's own results and the independent
+// periodic /health check -- see gossip.go and peer_manager.go); it is not
+// ready if every known peer is currently unreachable, since this node is
+// then fully isolated from the cluster and can only serve local,
+// unreplicated state.
 func (hc *HealthChecker) GetReadinessStatus() *ReadinessStatus {
-	checks := make(map[string]CheckResult)
-	ready := true
+	peers := hc.coordinator.GetPeers()
+	healthy := hc.coordinator.PeerManager().GetHealthyPeers()
 
-	// Check if coordinator is ready
-	coordinatorReady := true
-	checks["coordinator"] = CheckResult{
-		Status:  "ready",
-		Message: "Coordinator is ready",
+	status := &ReadinessStatus{
+		Peers:          len(peers),
+		HealthyPeers:   len(healthy),
+		UnhealthyPeers: len(peers) - len(healthy),
 	}
 
-	// Check if peer manager is ready
-	peerManagerReady := true
-	checks["peer_manager"] = CheckResult{
-		Status:  "ready",
-		Message: "Peer manager is ready",
+	if len(peers) == 0 || len(healthy) > 0 {
+		status.Ready = true
+		return status
 	}
 
-	// Check if failure detector is ready
-	failureDetectorReady := true
-	checks["failure_detector"] = CheckResult{
-		Status:  "ready",
-		Message: "Failure detector is ready",
-	}
-
-	ready = coordinatorReady && peerManagerReady && failureDetectorReady
-
-	reason := ""
-	if !ready {
-		reason = "One or more components are not ready"
-	}
-
-	return &ReadinessStatus{
-		Ready:  ready,
-		Reason: reason,
-		Checks: checks,
-	}
+	status.Ready = false
+	status.Reason = "isolated from cluster: no configured peer is currently reachable"
+	return status
 }
 
-// HandleLiveness handles liveness probe requests
+// HandleLiveness handles liveness probe requests (e.g. Kubernetes livez).
 func (hc *HealthChecker) HandleLiveness(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -150,16 +101,12 @@ func (hc *HealthChecker) HandleLiveness(w http.ResponseWriter, r *http.Request) 
 	status := hc.GetHealthStatus()
 
 	w.Header().Set("Content-Type", "application/json")
-	if status.Status == "healthy" {
-		w.WriteHeader(http.StatusOK)
-	} else {
-		w.WriteHeader(http.StatusServiceUnavailable)
-	}
-
+	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(status)
 }
 
-// HandleReadiness handles readiness probe requests
+// HandleReadiness handles readiness probe requests (e.g. Kubernetes
+// readyz).
 func (hc *HealthChecker) HandleReadiness(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodGet {
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
@@ -174,6 +121,5 @@ func (hc *HealthChecker) HandleReadiness(w http.ResponseWriter, r *http.Request)
 	} else {
 		w.WriteHeader(http.StatusServiceUnavailable)
 	}
-
 	json.NewEncoder(w).Encode(status)
 }

@@ -25,6 +25,14 @@ type GossipMessage struct {
 // SDKs talk to) -- gossip rides the HTTP API rather than a separate wire
 // protocol, fetching GET <peer>/internal/state each round and handing the
 // decoded state to whatever stateMerger was registered.
+//
+// peerManager tracks each peer's health (via performGossip's own results,
+// plus its own independent periodic GET <peer>/health check -- see
+// PeerManager's doc comment for why both matter). performGossip prefers
+// healthy peers when picking who to gossip with, so a cluster with any
+// live peers doesn't keep wasting rounds on ones already known to be
+// down; it falls back to trying everyone if none are currently healthy,
+// so recovery from a total outage isn't permanently blocked.
 type GossipCoordinator struct {
 	mu             sync.RWMutex
 	config         *core.ClusterConfig
@@ -36,6 +44,7 @@ type GossipCoordinator struct {
 	stateMerger    func(peer *core.MeshStoreState)
 	httpClient     *http.Client
 	clusterSecret  string // sent as X-Cluster-Secret on every outgoing gossip request, if set
+	peerManager    *PeerManager
 }
 
 // NewGossipCoordinator creates a new gossip coordinator
@@ -47,12 +56,20 @@ func NewGossipCoordinator(config *core.ClusterConfig, syncInterval time.Duration
 		syncInterval: syncInterval,
 		stopChan:     make(chan struct{}),
 		httpClient:   &http.Client{Timeout: 5 * time.Second},
+		// 3 consecutive failed pings before a peer is marked unhealthy,
+		// checked on the same cadence as gossip rounds -- reusing
+		// syncInterval rather than adding a second configurable interval,
+		// since there's no reason health checks need a different cadence
+		// from gossip itself.
+		peerManager: NewPeerManager(3, syncInterval),
 	}
 
 	// Initialize peers from config
 	for _, node := range config.Nodes {
 		if node.ID != config.NodeName {
-			gc.peers[node.ID] = &node
+			n := node
+			gc.peers[node.ID] = &n
+			gc.peerManager.AddPeer(&n)
 		}
 	}
 
@@ -78,14 +95,17 @@ func (gc *GossipCoordinator) RegisterStateMerger(merger func(peer *core.MeshStor
 	gc.stateMerger = merger
 }
 
-// Start begins the gossip protocol
+// Start begins the gossip protocol and peer health checking.
 func (gc *GossipCoordinator) Start(ctx context.Context) error {
+	gc.peerManager.Start()
 	go gc.gossipLoop(ctx)
 	return nil
 }
 
-// Stop gracefully shuts down the gossip coordinator
+// Stop gracefully shuts down the gossip coordinator and peer health
+// checking.
 func (gc *GossipCoordinator) Stop() error {
+	gc.peerManager.Stop()
 	close(gc.stopChan)
 	return nil
 }
@@ -114,8 +134,13 @@ func (gc *GossipCoordinator) gossipLoop(ctx context.Context) {
 	}
 }
 
-// performGossip selects a random peer, fetches its current state over
-// HTTP, and merges it into local state via the registered stateMerger.
+// performGossip selects a peer, fetches its current state over HTTP, and
+// merges it into local state via the registered stateMerger. Prefers a
+// peer PeerManager currently considers healthy (avoiding wasted rounds on
+// a peer already known to be down); if none are healthy right now, falls
+// back to trying any known peer at random, so a total outage doesn't
+// permanently prevent ever attempting a peer again once it might have
+// recovered.
 func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	gc.mu.RLock()
 	peers := make([]*core.Node, 0, len(gc.peers))
@@ -125,15 +150,20 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	merger := gc.stateMerger
 	client := gc.httpClient
 	clusterSecret := gc.clusterSecret
+	peerManager := gc.peerManager
 	gc.mu.RUnlock()
 
 	if len(peers) == 0 || merger == nil {
 		return
 	}
 
-	// Select random peer
-	peer := peers[rand.Intn(len(peers))]
+	candidates := peerManager.GetHealthyPeers()
+	if len(candidates) == 0 {
+		candidates = peers
+	}
+	peer := candidates[rand.Intn(len(candidates))]
 
+	start := time.Now()
 	url := fmt.Sprintf("http://%s:%d/internal/state", peer.Address, peer.Port)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -145,20 +175,24 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 
 	resp, err := client.Do(req)
 	if err != nil {
+		peerManager.RecordFailure(peer.ID)
 		return
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
+		peerManager.RecordFailure(peer.ID)
 		return
 	}
 
 	var state core.MeshStoreState
 	if err := json.NewDecoder(resp.Body).Decode(&state); err != nil {
+		peerManager.RecordFailure(peer.ID)
 		return
 	}
 
 	merger(&state)
+	peerManager.RecordSuccess(peer.ID, time.Since(start))
 
 	gc.mu.Lock()
 	gc.lastSync[peer.ID] = time.Now()
@@ -190,7 +224,10 @@ func (gc *GossipCoordinator) GetPeers() []*core.Node {
 	return peers
 }
 
-// AddPeer adds a new peer to the cluster
+// AddPeer adds a new peer to the cluster. Idempotent: re-adding a peer
+// already known (e.g. a duplicate join) is not an error, it just leaves
+// that peer's existing health-tracking state alone rather than resetting
+// it.
 func (gc *GossipCoordinator) AddPeer(node *core.Node) error {
 	gc.mu.Lock()
 	defer gc.mu.Unlock()
@@ -201,6 +238,7 @@ func (gc *GossipCoordinator) AddPeer(node *core.Node) error {
 
 	gc.peers[node.ID] = node
 	gc.lastSync[node.ID] = time.Now()
+	gc.peerManager.AddPeer(node) // ignore "already exists" -- see doc comment
 	return nil
 }
 
@@ -211,10 +249,12 @@ func (gc *GossipCoordinator) RemovePeer(nodeID string) error {
 
 	delete(gc.peers, nodeID)
 	delete(gc.lastSync, nodeID)
+	gc.peerManager.RemovePeer(nodeID)
 	return nil
 }
 
-// GetStats returns gossip statistics
+// GetStats returns gossip statistics, including peer health (see
+// PeerManager.GetStats).
 func (gc *GossipCoordinator) GetStats() map[string]interface{} {
 	gc.mu.RLock()
 	defer gc.mu.RUnlock()
@@ -224,6 +264,7 @@ func (gc *GossipCoordinator) GetStats() map[string]interface{} {
 		"peer_count":    len(gc.peers),
 		"sync_interval": gc.syncInterval.String(),
 		"last_syncs":    make(map[string]string),
+		"peer_health":   gc.peerManager.GetStats(),
 	}
 
 	lastSyncs := stats["last_syncs"].(map[string]string)
@@ -232,4 +273,30 @@ func (gc *GossipCoordinator) GetStats() map[string]interface{} {
 	}
 
 	return stats
+}
+
+// PeerManager returns this coordinator's PeerManager, for callers (e.g.
+// api.HealthChecker) that need direct access to peer health tracking.
+func (gc *GossipCoordinator) PeerManager() *PeerManager {
+	gc.mu.RLock()
+	defer gc.mu.RUnlock()
+	return gc.peerManager
+}
+
+// GetPeerHealth returns detailed per-peer health info (success/failure
+// counts, response time, whether currently considered healthy).
+func (gc *GossipCoordinator) GetPeerHealth() []*PeerInfo {
+	gc.mu.RLock()
+	peerManager := gc.peerManager
+	gc.mu.RUnlock()
+
+	all := peerManager.GetAllPeers()
+	out := make([]*PeerInfo, 0, len(all))
+	for _, node := range all {
+		info, err := peerManager.GetPeerInfo(node.ID)
+		if err == nil {
+			out = append(out, info)
+		}
+	}
+	return out
 }

@@ -2,19 +2,26 @@ package coordination
 
 import (
 	"fmt"
+	"net/http"
 	"sync"
 	"time"
 
 	"github.com/toll-mesh/store/core"
 )
 
-// PeerManager handles peer discovery and health monitoring
+// PeerManager handles peer discovery and health monitoring: it tracks
+// each peer's recent ping outcomes and periodically checks every known
+// peer directly (via a real GET <peer>/health, not just relying on
+// whichever peer gossip happens to pick that round), so failure/recovery
+// is detected on a fixed schedule regardless of cluster size.
 type PeerManager struct {
-	mu                sync.RWMutex
-	peers             map[string]*PeerInfo
-	failureThreshold  int
-	healthCheckTicker *time.Ticker
-	stopChan          chan struct{}
+	mu                  sync.RWMutex
+	peers               map[string]*PeerInfo
+	failureThreshold    int
+	healthCheckInterval time.Duration
+	healthCheckTicker   *time.Ticker
+	stopChan            chan struct{}
+	httpClient          *http.Client
 }
 
 // PeerInfo contains information about a peer node
@@ -32,10 +39,11 @@ type PeerInfo struct {
 // NewPeerManager creates a new peer manager
 func NewPeerManager(failureThreshold int, healthCheckInterval time.Duration) *PeerManager {
 	pm := &PeerManager{
-		peers:             make(map[string]*PeerInfo),
-		failureThreshold:  failureThreshold,
-		healthCheckTicker: time.NewTicker(healthCheckInterval),
-		stopChan:          make(chan struct{}),
+		peers:               make(map[string]*PeerInfo),
+		failureThreshold:    failureThreshold,
+		healthCheckInterval: healthCheckInterval,
+		stopChan:            make(chan struct{}),
+		httpClient:          &http.Client{Timeout: 5 * time.Second},
 	}
 	return pm
 }
@@ -186,13 +194,27 @@ func (pm *PeerManager) GetStats() map[string]interface{} {
 
 // Start begins the peer manager's health check loop
 func (pm *PeerManager) Start() {
+	// The ticker is created here, not in the constructor, so a
+	// PeerManager built with a non-positive interval (e.g. a
+	// GossipCoordinator constructed for tests that only exercise its
+	// HTTP-facing methods and never calls Start) doesn't panic just from
+	// being constructed -- time.NewTicker rejects a non-positive
+	// duration. Such a PeerManager simply never runs its health-check
+	// loop, mirroring GossipCoordinator's own gossipLoop, which has the
+	// identical "only ever ticks if Start is actually called" shape.
+	if pm.healthCheckInterval <= 0 {
+		return
+	}
+	pm.healthCheckTicker = time.NewTicker(pm.healthCheckInterval)
 	go pm.healthCheckLoop()
 }
 
 // Stop gracefully shuts down the peer manager
 func (pm *PeerManager) Stop() error {
 	close(pm.stopChan)
-	pm.healthCheckTicker.Stop()
+	if pm.healthCheckTicker != nil {
+		pm.healthCheckTicker.Stop()
+	}
 	return nil
 }
 
@@ -208,20 +230,35 @@ func (pm *PeerManager) healthCheckLoop() {
 	}
 }
 
-// performHealthCheck checks the health of all peers
+// performHealthCheck checks every known peer directly, via a real
+// GET <peer>/health -- the same unauthenticated endpoint load balancers
+// use, so no cluster secret or API key is needed here. This runs on its
+// own fixed schedule independent of gossip's random per-round peer pick,
+// which is what makes it useful for failure *and* recovery detection: a
+// peer performGossip hasn't happened to select in a while still gets
+// checked, and an unhealthy peer keeps getting checked (not just skipped)
+// so its recovery is actually noticed.
 func (pm *PeerManager) performHealthCheck() {
 	pm.mu.RLock()
 	peers := make([]*PeerInfo, 0, len(pm.peers))
 	for _, peerInfo := range pm.peers {
 		peers = append(peers, peerInfo)
 	}
+	client := pm.httpClient
 	pm.mu.RUnlock()
 
-	// Check each peer (in real implementation, this would be actual health checks)
 	for _, peerInfo := range peers {
-		// Simulate health check - in production, this would be actual HTTP/gRPC calls
-		if time.Since(peerInfo.LastHeartbeat) > 30*time.Second {
+		start := time.Now()
+		url := fmt.Sprintf("http://%s:%d/health", peerInfo.Node.Address, peerInfo.Node.Port)
+		resp, err := client.Get(url)
+		if err != nil || resp.StatusCode != http.StatusOK {
+			if resp != nil {
+				resp.Body.Close()
+			}
 			pm.RecordFailure(peerInfo.Node.ID)
+			continue
 		}
+		resp.Body.Close()
+		pm.RecordSuccess(peerInfo.Node.ID, time.Since(start))
 	}
 }

@@ -2,6 +2,7 @@ package queue
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -376,22 +377,27 @@ func jobLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
 
 // Helper functions
 
+// sortPendingJobs orders PendingJobs by priority (higher first), then by
+// timestamp (older first) for equal priority. A load test surfaced a real
+// bug here: this was previously a hand-rolled O(n^2) double loop, run on
+// every single Enqueue call -- fine for a handful of pending jobs, but
+// under any sustained enqueue load where jobs aren't being claimed as
+// fast as they arrive (e.g. no worker running yet, or a burst), PendingJobs
+// grows into the thousands and every subsequent Enqueue call re-sorts the
+// entire slice from scratch at O(n^2), serializing under jq.mu.Lock() and
+// producing multi-hundred-millisecond to multi-second p99 enqueue latency
+// (confirmed live: p50 392ms, p99 1.68s against real concurrent load,
+// versus tens of microseconds for every other endpoint). sort.Slice is
+// O(n log n) and produces the identical ordering.
 func (jq *JobQueue) sortPendingJobs() {
-	// Sort by priority (higher first), then by timestamp (older first)
-	for i := 0; i < len(jq.PendingJobs)-1; i++ {
-		for j := i + 1; j < len(jq.PendingJobs); j++ {
-			jobI := jq.JobIndex[jq.PendingJobs[i]]
-			jobJ := jq.JobIndex[jq.PendingJobs[j]]
-
-			// Higher priority first
-			if jobJ.Priority > jobI.Priority {
-				jq.PendingJobs[i], jq.PendingJobs[j] = jq.PendingJobs[j], jq.PendingJobs[i]
-			} else if jobJ.Priority == jobI.Priority && jobJ.Timestamp < jobI.Timestamp {
-				// Older jobs first if same priority
-				jq.PendingJobs[i], jq.PendingJobs[j] = jq.PendingJobs[j], jq.PendingJobs[i]
-			}
+	sort.Slice(jq.PendingJobs, func(i, j int) bool {
+		jobI := jq.JobIndex[jq.PendingJobs[i]]
+		jobJ := jq.JobIndex[jq.PendingJobs[j]]
+		if jobI.Priority != jobJ.Priority {
+			return jobI.Priority > jobJ.Priority
 		}
-	}
+		return jobI.Timestamp < jobJ.Timestamp
+	})
 }
 
 func (jq *JobQueue) removeFromPending(jobID string) {

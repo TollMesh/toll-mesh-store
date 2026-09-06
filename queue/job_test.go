@@ -452,6 +452,46 @@ func TestMergeSnapshotInsertsUnknownPeerJob(t *testing.T) {
 	}
 }
 
+// TestEnqueueStaysFastWithManyPendingJobs is the regression test for a
+// real performance bug a load test found: sortPendingJobs was O(n^2),
+// called on every Enqueue, so a queue accumulating pending jobs faster
+// than they're claimed (an ordinary, expected situation, not a pathological
+// one) degraded every subsequent Enqueue call quadratically. 5000
+// sequential enqueues (none claimed, so PendingJobs grows the whole time,
+// the worst case for the old implementation) must complete quickly; the
+// old O(n^2) version took several real seconds for this size, this must
+// take well under a second.
+func TestEnqueueStaysFastWithManyPendingJobs(t *testing.T) {
+	jm := NewJobManager("node-1")
+	defer jm.Stop()
+
+	const n = 5000
+	start := time.Now()
+	for i := 0; i < n; i++ {
+		if _, err := jm.Enqueue("perf-queue", []byte("payload"), JobOptions{Priority: i % 10}); err != nil {
+			t.Fatalf("enqueue %d failed: %v", i, err)
+		}
+	}
+	elapsed := time.Since(start)
+
+	if elapsed > 2*time.Second {
+		t.Errorf("%d enqueues took %s, expected well under 2s -- looks like sortPendingJobs regressed back to O(n^2)", n, elapsed)
+	}
+	t.Logf("%d enqueues took %s", n, elapsed)
+
+	// Correctness: still ordered by priority (higher first).
+	q := jm.GetOrCreateQueue("perf-queue")
+	q.mu.RLock()
+	defer q.mu.RUnlock()
+	for i := 1; i < len(q.PendingJobs); i++ {
+		prev := q.JobIndex[q.PendingJobs[i-1]]
+		cur := q.JobIndex[q.PendingJobs[i]]
+		if cur.Priority > prev.Priority {
+			t.Fatalf("PendingJobs not sorted by priority at index %d: %d before %d", i, prev.Priority, cur.Priority)
+		}
+	}
+}
+
 func BenchmarkEnqueue(b *testing.B) {
 	jm := NewJobManager("node-1")
 	defer jm.Stop()

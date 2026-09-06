@@ -192,58 +192,45 @@ func main() {
 }
 `
 
-// TestMergeSnapshotAdoptsNewerPeerScript is the regression test for WASM
-// script gossip replication: MergeSnapshot must adopt a peer's version
-// only when it's strictly newer (by Compiled, then Node), and adopting it
-// must actually recompile the peer's source on this node (proven by
-// executing the result, not just checking the stored Source string).
-func TestMergeSnapshotAdoptsNewerPeerScript(t *testing.T) {
+// TestMergeSnapshotNeverOverwritesExistingScriptName is the regression
+// test for a real security finding: MergeSnapshot must never let a peer's
+// gossiped script replace an existing local script under the same name,
+// no matter what (Compiled, Node) values the peer claims -- otherwise a
+// node holding only the cluster secret (which gates gossip) could hijack
+// a script name that was only ever supposed to be registered through the
+// API-key-gated Compile path, and a later /script/execute call by a
+// legitimate caller would silently run different code than they
+// registered. This asserts both a "newer" and a "far-future timestamp"
+// peer claim are both rejected outright.
+func TestMergeSnapshotNeverOverwritesExistingScriptName(t *testing.T) {
 	e := newTestWasmEngine(t, 10*time.Second)
 	local, err := e.Compile("echo", echoScript)
 	if err != nil {
 		t.Fatalf("local compile failed: %v", err)
 	}
 
-	// A stale peer version must not overwrite the newer local one.
-	stalePeer := CompiledScript{
-		Name:     "echo",
-		Source:   echoScriptV2,
-		Compiled: local.Compiled - 1000,
-		Node:     "node-2",
+	attemptsClaimingToBeNewer := []CompiledScript{
+		{Name: "echo", Source: echoScriptV2, Compiled: local.Compiled + 1000, Node: "node-2"},
+		{Name: "echo", Source: echoScriptV2, Compiled: 99999999999999, Node: "zzz-wins-every-tiebreak"},
 	}
-	e.MergeSnapshot([]CompiledScript{stalePeer})
+	for _, peer := range attemptsClaimingToBeNewer {
+		e.MergeSnapshot([]CompiledScript{peer})
 
-	output, err := e.Execute("echo", "test")
-	if err != nil {
-		t.Fatalf("execute after stale merge failed: %v", err)
-	}
-	if strings.TrimSpace(output) != "echo: test" {
-		t.Fatalf("stale peer script incorrectly adopted, output = %q", output)
-	}
+		output, err := e.Execute("echo", "test")
+		if err != nil {
+			t.Fatalf("execute after hijack attempt failed: %v", err)
+		}
+		if strings.TrimSpace(output) != "echo: test" {
+			t.Fatalf("existing script name was hijacked by a gossiped peer version, output = %q", output)
+		}
 
-	// A newer peer version must be adopted, recompiled, and executable.
-	newerPeer := CompiledScript{
-		Name:     "echo",
-		Source:   echoScriptV2,
-		Compiled: local.Compiled + 1000,
-		Node:     "node-2",
-	}
-	e.MergeSnapshot([]CompiledScript{newerPeer})
-
-	output, err = e.Execute("echo", "test")
-	if err != nil {
-		t.Fatalf("execute after newer merge failed: %v", err)
-	}
-	if strings.TrimSpace(output) != "echo-v2: test" {
-		t.Fatalf("newer peer script not adopted correctly, output = %q", output)
-	}
-
-	adopted, err := e.GetScript("echo")
-	if err != nil {
-		t.Fatalf("GetScript failed: %v", err)
-	}
-	if adopted.Compiled != newerPeer.Compiled || adopted.Node != "node-2" {
-		t.Fatalf("adopted script's version metadata not preserved from peer: %+v", adopted)
+		adopted, err := e.GetScript("echo")
+		if err != nil {
+			t.Fatalf("GetScript failed: %v", err)
+		}
+		if adopted.Node == peer.Node {
+			t.Fatalf("existing script's Node was overwritten by a peer merge: %+v", adopted)
+		}
 	}
 }
 

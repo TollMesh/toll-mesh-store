@@ -344,27 +344,44 @@ func (e *WasmEngine) Snapshot() []CompiledScript {
 	return out
 }
 
-// MergeSnapshot merges a peer's Snapshot output: a (Compiled, Node)
-// LWW-register comparison per script name, the same pattern as
-// Cache/Pipelines/Search/Job Queues/Transactions -- but, unlike every one
-// of those, adopting a peer's version here is NOT a cheap struct swap. A
-// script's Source is Go code; there is no compiled module to gossip (it's
-// neither serializable in any meaningful cross-machine sense nor safe to
-// trust from the wire), so adopting a peer's newer version means actually
-// invoking the TinyGo compiler on this node -- the same "real seconds"
-// cost Compile's own doc comment already describes. This is deliberate:
-// scripts change far less often than, say, cache keys, so paying a
-// real compile once per genuine change is acceptable; it would not be if
-// this ran on every gossip round for unchanged scripts, which the LWW
-// skip-if-not-newer check above prevents.
+// MergeSnapshot merges a peer's Snapshot output, but -- unlike every other
+// feature's MergeSnapshot (Cache/Pipelines/Search/Job Queues/Transactions),
+// which use a (version, Node) LWW-register comparison that lets a peer's
+// newer write overwrite an existing entry -- this one is insert-only: a
+// peer's script is compiled and adopted only for a name this node has
+// never seen before. An existing name, once registered (always via the
+// API-key-gated Compile/RegisterScript path, never via gossip), is never
+// replaced by anything arriving over the cluster-secret-gated gossip
+// channel, no matter what (Compiled, Node) values it claims.
+//
+// This is deliberately more restrictive than the LWW pattern used
+// elsewhere, for a real security reason: merging a peer's data for every
+// other feature only ever adopts inert state (a cache value, a job
+// payload) that does nothing until a separately-authenticated caller acts
+// on it. Merging a WASM script is different in kind -- it invokes the
+// TinyGo compiler as a direct, unavoidable side effect of the merge
+// itself, and if it were also allowed to overwrite an existing name, a
+// node holding only the cluster secret (a materially weaker, separately-
+// distributed credential from the API key that gates script compilation
+// and registration everywhere else) could silently swap what an existing,
+// previously-trusted script name resolves to. A later /script/execute
+// call by a legitimate API-key holder, naming a script they believe was
+// vetted and registered through the authenticated path, would then run
+// code that was never submitted through it. Insert-only closes that
+// specific hole: gossip can still spread a genuinely new script to every
+// node (the actual point of replicating this feature), but can never
+// hijack a name that already means something on this node. The tradeoff,
+// accepted deliberately: a script's *update* (re-registering an existing
+// name with new source) does not propagate via gossip -- only its first
+// appearance does. An operator updating a script must do so on every node
+// directly, the same as before this feature existed.
 //
 // The double-checked lock (re-verifying under e.mu.Lock after compiling,
 // which happens without holding any lock) exists because compilation can
 // take longer than one gossip interval: two peers' concurrent merges, or a
 // merge racing a local Compile call for the same name, could otherwise
-// both decide "the current local version is stale" and race to replace
-// each other's result without properly releasing the loser's compiled
-// module.
+// both decide "this name is still unclaimed" and race to install their
+// own result without properly releasing the loser's compiled module.
 //
 // If this node has no WasmEngine at all (TinyGo wasn't found at startup),
 // there is nothing to merge into -- see MeshStore.MergeState's nil check.
@@ -375,10 +392,10 @@ func (e *WasmEngine) MergeSnapshot(peerScripts []CompiledScript) {
 		peer := &peerScripts[i]
 
 		e.mu.RLock()
-		local, exists := e.scripts[peer.Name]
+		_, exists := e.scripts[peer.Name]
 		e.mu.RUnlock()
 
-		if exists && !scriptLess(local.Compiled, local.Node, peer.Compiled, peer.Node) {
+		if exists {
 			continue
 		}
 
@@ -386,7 +403,7 @@ func (e *WasmEngine) MergeSnapshot(peerScripts []CompiledScript) {
 		if err != nil {
 			// The peer's source failed to compile on this node (e.g. a
 			// TinyGo version mismatch across the cluster) -- nothing
-			// sensible to adopt, leave the local version as-is.
+			// sensible to adopt.
 			continue
 		}
 		compiled, err := e.runtime.CompileModule(context.Background(), wasmBytes)
@@ -404,31 +421,18 @@ func (e *WasmEngine) MergeSnapshot(peerScripts []CompiledScript) {
 		}
 
 		e.mu.Lock()
-		old, existed := e.scripts[peer.Name]
-		if existed && !scriptLess(old.Compiled, old.Node, peer.Compiled, peer.Node) {
+		if _, claimed := e.scripts[peer.Name]; claimed {
 			// Someone else (a concurrent merge, or a local Compile call)
-			// already adopted an equal-or-newer version while we were
-			// compiling. Discard our redundant compile.
+			// already claimed this name while we were compiling. Discard
+			// our redundant compile -- first writer wins, exactly like
+			// the name never having existed locally in the first place.
 			e.mu.Unlock()
 			compiled.Close(context.Background())
 			continue
 		}
 		e.scripts[peer.Name] = newScript
 		e.mu.Unlock()
-
-		if existed {
-			old.compiled.Close(context.Background())
-		}
 	}
-}
-
-// scriptLess reports whether (tsA, nodeA) sorts strictly before (tsB,
-// nodeB) in the script LWW-register's version order.
-func scriptLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
-	if tsA != tsB {
-		return tsA < tsB
-	}
-	return nodeA < nodeB
 }
 
 // GetStats returns engine statistics.

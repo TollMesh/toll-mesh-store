@@ -247,6 +247,15 @@ func (hs *HTTPServer) Start() error {
 	return hs.server.ListenAndServe()
 }
 
+// StartTLS starts the HTTP server with TLS, serving certFile/keyFile.
+// Every endpoint (SDK-facing and /internal/*) is served encrypted --
+// there's no partial mode mixing plaintext and TLS on one listener, since
+// gossip already rides the same HTTP API SDKs use rather than a separate
+// port.
+func (hs *HTTPServer) StartTLS(certFile, keyFile string) error {
+	return hs.server.ListenAndServeTLS(certFile, keyFile)
+}
+
 // Stop gracefully shuts down the HTTP server
 func (hs *HTTPServer) Stop() error {
 	return hs.server.Close()

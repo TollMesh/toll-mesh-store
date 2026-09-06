@@ -2,6 +2,8 @@ package coordination
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -226,7 +228,8 @@ func newStateServer(t *testing.T, onMerge func()) *httptest.Server {
 
 func mustParseTestServerNode(t *testing.T, id string, server *httptest.Server) *core.Node {
 	t.Helper()
-	host, portStr, err := net.SplitHostPort(strings.TrimPrefix(server.URL, "http://"))
+	addr := strings.TrimPrefix(strings.TrimPrefix(server.URL, "https://"), "http://")
+	host, portStr, err := net.SplitHostPort(addr)
 	if err != nil {
 		t.Fatalf("failed to parse test server URL: %v", err)
 	}
@@ -235,6 +238,80 @@ func mustParseTestServerNode(t *testing.T, id string, server *httptest.Server) *
 		t.Fatalf("failed to parse port: %v", err)
 	}
 	return &core.Node{ID: id, Address: host, Port: port}
+}
+
+// TestGossipCoordinatorTLSWithTrustedCA verifies performGossip succeeds
+// over https:// once SetTLSConfig is given a CA pool that actually trusts
+// the peer's certificate.
+func TestGossipCoordinatorTLSWithTrustedCA(t *testing.T) {
+	var merged bool
+	var mu sync.Mutex
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Scheme == "http" {
+			t.Error("request arrived without TLS")
+		}
+		mu.Lock()
+		merged = true
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	pool := x509.NewCertPool()
+	pool.AddCert(server.Certificate())
+
+	config := &core.ClusterConfig{NodeName: "node1"}
+	gc := NewGossipCoordinator(config, 20*time.Millisecond)
+	gc.RegisterStateMerger(func(peer *core.MeshStoreState) {})
+	gc.SetTLSConfig(&tls.Config{RootCAs: pool})
+	gc.AddPeer(mustParseTestServerNode(t, "peer1", server))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	gc.performGossip(ctx)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if !merged {
+		t.Fatal("expected performGossip to succeed over TLS against a trusted CA")
+	}
+}
+
+// TestGossipCoordinatorTLSRejectsUntrustedPeer verifies performGossip does
+// NOT merge when the peer's certificate isn't trusted -- proving
+// SetTLSConfig actually verifies peers rather than blindly trusting
+// whatever's on the other end of the socket (e.g. an on-path attacker
+// presenting their own certificate).
+func TestGossipCoordinatorTLSRejectsUntrustedPeer(t *testing.T) {
+	var merged bool
+	var mu sync.Mutex
+	server := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		merged = true
+		mu.Unlock()
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{}`))
+	}))
+	defer server.Close()
+
+	// An empty CA pool trusts nothing -- the test server's self-signed
+	// cert must be rejected.
+	config := &core.ClusterConfig{NodeName: "node1"}
+	gc := NewGossipCoordinator(config, 20*time.Millisecond)
+	gc.RegisterStateMerger(func(peer *core.MeshStoreState) {})
+	gc.SetTLSConfig(&tls.Config{RootCAs: x509.NewCertPool()})
+	gc.AddPeer(mustParseTestServerNode(t, "peer1", server))
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	gc.performGossip(ctx)
+
+	mu.Lock()
+	defer mu.Unlock()
+	if merged {
+		t.Fatal("performGossip merged state from a peer with an untrusted certificate -- TLS verification is not actually happening")
+	}
 }
 
 // TestStateSync tests the state synchronization functionality

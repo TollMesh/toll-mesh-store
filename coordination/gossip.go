@@ -2,6 +2,7 @@ package coordination
 
 import (
 	"context"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"math/rand"
@@ -45,6 +46,7 @@ type GossipCoordinator struct {
 	httpClient     *http.Client
 	clusterSecret  string // sent as X-Cluster-Secret on every outgoing gossip request, if set
 	peerManager    *PeerManager
+	useTLS         bool // if true, outgoing requests use https:// (see SetTLSConfig)
 }
 
 // NewGossipCoordinator creates a new gossip coordinator
@@ -74,6 +76,36 @@ func NewGossipCoordinator(config *core.ClusterConfig, syncInterval time.Duration
 	}
 
 	return gc
+}
+
+// scheme returns "https" or "http" depending on whether SetTLSConfig has
+// been called. Callers must already hold gc.mu (for reading).
+func (gc *GossipCoordinator) scheme() string {
+	if gc.useTLS {
+		return "https"
+	}
+	return "http"
+}
+
+// SetTLSConfig switches this coordinator (and its PeerManager) to speak
+// https:// to every peer, using tlsConfig for outgoing connections --
+// typically a *tls.Config with RootCAs set to a shared cluster CA, so a
+// peer's server certificate is actually verified rather than blindly
+// trusted. Gossip and health-check traffic then travels encrypted
+// instead of the plaintext this project previously always sent
+// cluster-secret-protected but fully interceptable/tamperable state and
+// pings over. Does not affect this node's own HTTP server, which is
+// configured for TLS separately (see api.HTTPServer.StartTLS).
+func (gc *GossipCoordinator) SetTLSConfig(tlsConfig *tls.Config) {
+	gc.mu.Lock()
+	defer gc.mu.Unlock()
+
+	gc.useTLS = true
+	gc.httpClient = &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: tlsConfig},
+	}
+	gc.peerManager.SetTLSConfig(tlsConfig)
 }
 
 // SetClusterSecret sets the value sent as X-Cluster-Secret on every
@@ -151,6 +183,7 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	client := gc.httpClient
 	clusterSecret := gc.clusterSecret
 	peerManager := gc.peerManager
+	scheme := gc.scheme()
 	gc.mu.RUnlock()
 
 	if len(peers) == 0 || merger == nil {
@@ -164,7 +197,7 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	peer := candidates[rand.Intn(len(candidates))]
 
 	start := time.Now()
-	url := fmt.Sprintf("http://%s:%d/internal/state", peer.Address, peer.Port)
+	url := fmt.Sprintf("%s://%s:%d/internal/state", scheme, peer.Address, peer.Port)
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return

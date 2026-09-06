@@ -1,6 +1,7 @@
 package coordination
 
 import (
+	"crypto/tls"
 	"fmt"
 	"net/http"
 	"sync"
@@ -22,6 +23,21 @@ type PeerManager struct {
 	healthCheckTicker   *time.Ticker
 	stopChan            chan struct{}
 	httpClient          *http.Client
+	useTLS              bool // if true, health checks use https:// (see SetTLSConfig)
+}
+
+// SetTLSConfig switches health checks to use https:// with tlsConfig for
+// outgoing connections. See GossipCoordinator.SetTLSConfig, which calls
+// this to keep both in sync.
+func (pm *PeerManager) SetTLSConfig(tlsConfig *tls.Config) {
+	pm.mu.Lock()
+	defer pm.mu.Unlock()
+
+	pm.useTLS = true
+	pm.httpClient = &http.Client{
+		Timeout:   5 * time.Second,
+		Transport: &http.Transport{TLSClientConfig: tlsConfig},
+	}
 }
 
 // PeerInfo contains information about a peer node
@@ -245,11 +261,15 @@ func (pm *PeerManager) performHealthCheck() {
 		peers = append(peers, peerInfo)
 	}
 	client := pm.httpClient
+	scheme := "http"
+	if pm.useTLS {
+		scheme = "https"
+	}
 	pm.mu.RUnlock()
 
 	for _, peerInfo := range peers {
 		start := time.Now()
-		url := fmt.Sprintf("http://%s:%d/health", peerInfo.Node.Address, peerInfo.Node.Port)
+		url := fmt.Sprintf("%s://%s:%d/health", scheme, peerInfo.Node.Address, peerInfo.Node.Port)
 		resp, err := client.Get(url)
 		if err != nil || resp.StatusCode != http.StatusOK {
 			if resp != nil {

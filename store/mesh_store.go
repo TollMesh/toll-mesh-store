@@ -105,7 +105,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 	// it should still be able to run every other feature, so this degrades
 	// to "unavailable" (wasmEngine stays nil, handled explicitly by every
 	// WASM method below) rather than failing the whole server's startup.
-	if wasmEngine, err := scripting.NewWasmEngine("", 10*time.Second); err == nil {
+	if wasmEngine, err := scripting.NewWasmEngine("", 10*time.Second, config.NodeName); err == nil {
 		ms.wasmEngine = wasmEngine
 	} else {
 		ms.wasmUnavailable = err
@@ -935,6 +935,14 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	pubsubMessages := ms.pubsubBroker.Snapshot()
 	txns := ms.txnManager.Snapshot()
 
+	// wasmEngine is nil on a node where TinyGo wasn't found at startup --
+	// nothing to snapshot in that case (see MergeState's matching nil
+	// check on the receiving side).
+	var wasmScripts []scripting.CompiledScript
+	if ms.wasmEngine != nil {
+		wasmScripts = ms.wasmEngine.Snapshot()
+	}
+
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
@@ -949,6 +957,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		JobQueues:        jobQueues,
 		PubSubMessages:   pubsubMessages,
 		Transactions:     txns,
+		WasmScripts:      wasmScripts,
 	}
 }
 
@@ -1060,6 +1069,10 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	ms.pubsubBroker.MergeSnapshot(peer.PubSubMessages)
 
 	ms.txnManager.MergeSnapshot(peer.Transactions)
+
+	if ms.wasmEngine != nil {
+		ms.wasmEngine.MergeSnapshot(peer.WasmScripts)
+	}
 }
 
 // cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,

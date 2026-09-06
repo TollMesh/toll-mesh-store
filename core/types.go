@@ -232,4 +232,15 @@ type MeshStoreState struct {
 	// they're applied directly into Cache, which already replicates on its
 	// own.
 	Transactions []transactions.Transaction
+
+	// WasmScripts holds every registered script's source and version
+	// metadata (via scripting.WasmEngine.Snapshot) -- never the compiled
+	// module, which can't cross a node boundary. Merging (MergeSnapshot)
+	// is a (Compiled, Node) LWW-register comparison per script name, but
+	// unlike every other feature's merge, adopting a peer's newer version
+	// means actually invoking the TinyGo compiler on this node -- a real,
+	// multi-second cost, not a cheap struct swap (see MergeSnapshot's doc
+	// comment). Nil/empty on, and never merged into, a node where TinyGo
+	// wasn't found at startup (WasmEngine is nil there).
+	WasmScripts []scripting.CompiledScript
 }

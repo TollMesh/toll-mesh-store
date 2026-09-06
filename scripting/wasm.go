@@ -36,6 +36,9 @@ type CompiledScript struct {
 	Compiled   int64  `json:"compiled"`
 	Executions int64  `json:"executions"`
 	LastError  string `json:"last_error,omitempty"`
+	// Node is this script's LWW-register tiebreaker for gossip
+	// replication, alongside Compiled.
+	Node string `json:"node,omitempty"`
 
 	// compiled is the decoded-and-compiled WASM module, cached so Execute
 	// only has to instantiate it, not re-decode raw bytes every call.
@@ -50,6 +53,7 @@ type WasmEngine struct {
 	tinygoPath  string
 	execTimeout time.Duration
 	memoryPages uint32 // wasm memory limit, in 64KiB pages
+	nodeID      string // stamped onto CompiledScript.Node on every compile, for gossip LWW
 
 	runtime  wazero.Runtime
 	instance uint64 // atomic counter for unique per-call module instance names
@@ -58,7 +62,7 @@ type WasmEngine struct {
 // NewWasmEngine creates a new engine. tinygoPath is the path to the tinygo
 // binary (looked up on PATH if empty). Returns an error if tinygo cannot be
 // found, since without it no script can ever be compiled.
-func NewWasmEngine(tinygoPath string, execTimeout time.Duration) (*WasmEngine, error) {
+func NewWasmEngine(tinygoPath string, execTimeout time.Duration, nodeID string) (*WasmEngine, error) {
 	if tinygoPath == "" {
 		found, err := exec.LookPath("tinygo")
 		if err != nil {
@@ -95,6 +99,7 @@ func NewWasmEngine(tinygoPath string, execTimeout time.Duration) (*WasmEngine, e
 		tinygoPath:  tinygoPath,
 		execTimeout: execTimeout,
 		memoryPages: memoryPages,
+		nodeID:      nodeID,
 		runtime:     runtime,
 	}, nil
 }
@@ -127,6 +132,7 @@ func (e *WasmEngine) Compile(name, source string) (*CompiledScript, error) {
 		Source:   source,
 		WasmSize: len(wasmBytes),
 		Compiled: time.Now().UnixMilli(),
+		Node:     e.nodeID,
 		compiled: compiled,
 	}
 
@@ -314,6 +320,115 @@ func (e *WasmEngine) DeleteScript(name string) error {
 
 	script.compiled.Close(context.Background())
 	return nil
+}
+
+// Snapshot returns each registered script's source and version metadata
+// (not the compiled module -- an unexported field, and not meaningfully
+// serializable across nodes anyway), for gossip replication.
+func (e *WasmEngine) Snapshot() []CompiledScript {
+	e.mu.RLock()
+	defer e.mu.RUnlock()
+
+	out := make([]CompiledScript, 0, len(e.scripts))
+	for _, s := range e.scripts {
+		out = append(out, CompiledScript{
+			Name:       s.Name,
+			Source:     s.Source,
+			WasmSize:   s.WasmSize,
+			Compiled:   s.Compiled,
+			Executions: s.Executions,
+			LastError:  s.LastError,
+			Node:       s.Node,
+		})
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: a (Compiled, Node)
+// LWW-register comparison per script name, the same pattern as
+// Cache/Pipelines/Search/Job Queues/Transactions -- but, unlike every one
+// of those, adopting a peer's version here is NOT a cheap struct swap. A
+// script's Source is Go code; there is no compiled module to gossip (it's
+// neither serializable in any meaningful cross-machine sense nor safe to
+// trust from the wire), so adopting a peer's newer version means actually
+// invoking the TinyGo compiler on this node -- the same "real seconds"
+// cost Compile's own doc comment already describes. This is deliberate:
+// scripts change far less often than, say, cache keys, so paying a
+// real compile once per genuine change is acceptable; it would not be if
+// this ran on every gossip round for unchanged scripts, which the LWW
+// skip-if-not-newer check above prevents.
+//
+// The double-checked lock (re-verifying under e.mu.Lock after compiling,
+// which happens without holding any lock) exists because compilation can
+// take longer than one gossip interval: two peers' concurrent merges, or a
+// merge racing a local Compile call for the same name, could otherwise
+// both decide "the current local version is stale" and race to replace
+// each other's result without properly releasing the loser's compiled
+// module.
+//
+// If this node has no WasmEngine at all (TinyGo wasn't found at startup),
+// there is nothing to merge into -- see MeshStore.MergeState's nil check.
+// A cluster mixing nodes with and without TinyGo will simply never
+// converge WASM scripts onto the nodes lacking it.
+func (e *WasmEngine) MergeSnapshot(peerScripts []CompiledScript) {
+	for i := range peerScripts {
+		peer := &peerScripts[i]
+
+		e.mu.RLock()
+		local, exists := e.scripts[peer.Name]
+		e.mu.RUnlock()
+
+		if exists && !scriptLess(local.Compiled, local.Node, peer.Compiled, peer.Node) {
+			continue
+		}
+
+		wasmBytes, err := e.compileSource(peer.Source)
+		if err != nil {
+			// The peer's source failed to compile on this node (e.g. a
+			// TinyGo version mismatch across the cluster) -- nothing
+			// sensible to adopt, leave the local version as-is.
+			continue
+		}
+		compiled, err := e.runtime.CompileModule(context.Background(), wasmBytes)
+		if err != nil {
+			continue
+		}
+
+		newScript := &CompiledScript{
+			Name:     peer.Name,
+			Source:   peer.Source,
+			WasmSize: len(wasmBytes),
+			Compiled: peer.Compiled,
+			Node:     peer.Node,
+			compiled: compiled,
+		}
+
+		e.mu.Lock()
+		old, existed := e.scripts[peer.Name]
+		if existed && !scriptLess(old.Compiled, old.Node, peer.Compiled, peer.Node) {
+			// Someone else (a concurrent merge, or a local Compile call)
+			// already adopted an equal-or-newer version while we were
+			// compiling. Discard our redundant compile.
+			e.mu.Unlock()
+			compiled.Close(context.Background())
+			continue
+		}
+		e.scripts[peer.Name] = newScript
+		e.mu.Unlock()
+
+		if existed {
+			old.compiled.Close(context.Background())
+		}
+	}
+}
+
+// scriptLess reports whether (tsA, nodeA) sorts strictly before (tsB,
+// nodeB) in the script LWW-register's version order.
+func scriptLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
+	if tsA != tsB {
+		return tsA < tsB
+	}
+	return nodeA < nodeB
 }
 
 // GetStats returns engine statistics.

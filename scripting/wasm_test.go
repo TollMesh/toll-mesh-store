@@ -8,7 +8,7 @@ import (
 
 func newTestWasmEngine(t *testing.T, timeout time.Duration) *WasmEngine {
 	t.Helper()
-	e, err := NewWasmEngine("", timeout)
+	e, err := NewWasmEngine("", timeout, "node-1")
 	if err != nil {
 		t.Skipf("tinygo not available, skipping WASM tests: %v", err)
 	}
@@ -170,6 +170,102 @@ func TestWasmEngineGetStats(t *testing.T) {
 	}
 	if stats["total_executions"] != int64(1) {
 		t.Errorf("expected 1 execution, got %v", stats["total_executions"])
+	}
+}
+
+// echoScriptV2 behaves observably differently from echoScript (a different
+// prefix), so a test can tell which version actually got adopted/executed
+// rather than just checking that *a* compile happened.
+const echoScriptV2 = `
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+)
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	fmt.Printf("echo-v2: %s\n", scanner.Text())
+}
+`
+
+// TestMergeSnapshotAdoptsNewerPeerScript is the regression test for WASM
+// script gossip replication: MergeSnapshot must adopt a peer's version
+// only when it's strictly newer (by Compiled, then Node), and adopting it
+// must actually recompile the peer's source on this node (proven by
+// executing the result, not just checking the stored Source string).
+func TestMergeSnapshotAdoptsNewerPeerScript(t *testing.T) {
+	e := newTestWasmEngine(t, 10*time.Second)
+	local, err := e.Compile("echo", echoScript)
+	if err != nil {
+		t.Fatalf("local compile failed: %v", err)
+	}
+
+	// A stale peer version must not overwrite the newer local one.
+	stalePeer := CompiledScript{
+		Name:     "echo",
+		Source:   echoScriptV2,
+		Compiled: local.Compiled - 1000,
+		Node:     "node-2",
+	}
+	e.MergeSnapshot([]CompiledScript{stalePeer})
+
+	output, err := e.Execute("echo", "test")
+	if err != nil {
+		t.Fatalf("execute after stale merge failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "echo: test" {
+		t.Fatalf("stale peer script incorrectly adopted, output = %q", output)
+	}
+
+	// A newer peer version must be adopted, recompiled, and executable.
+	newerPeer := CompiledScript{
+		Name:     "echo",
+		Source:   echoScriptV2,
+		Compiled: local.Compiled + 1000,
+		Node:     "node-2",
+	}
+	e.MergeSnapshot([]CompiledScript{newerPeer})
+
+	output, err = e.Execute("echo", "test")
+	if err != nil {
+		t.Fatalf("execute after newer merge failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "echo-v2: test" {
+		t.Fatalf("newer peer script not adopted correctly, output = %q", output)
+	}
+
+	adopted, err := e.GetScript("echo")
+	if err != nil {
+		t.Fatalf("GetScript failed: %v", err)
+	}
+	if adopted.Compiled != newerPeer.Compiled || adopted.Node != "node-2" {
+		t.Fatalf("adopted script's version metadata not preserved from peer: %+v", adopted)
+	}
+}
+
+// TestMergeSnapshotCompilesUnknownPeerScript verifies a script registered
+// only on a peer (never seen locally) is compiled and registered outright.
+func TestMergeSnapshotCompilesUnknownPeerScript(t *testing.T) {
+	e := newTestWasmEngine(t, 10*time.Second)
+
+	peer := CompiledScript{
+		Name:     "peer-only",
+		Source:   echoScript,
+		Compiled: time.Now().UnixMilli(),
+		Node:     "node-2",
+	}
+	e.MergeSnapshot([]CompiledScript{peer})
+
+	output, err := e.Execute("peer-only", "hi")
+	if err != nil {
+		t.Fatalf("execute of merged peer-only script failed: %v", err)
+	}
+	if strings.TrimSpace(output) != "echo: hi" {
+		t.Fatalf("unexpected output from merged script: %q", output)
 	}
 }
 

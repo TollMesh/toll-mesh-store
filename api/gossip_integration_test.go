@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 	"time"
 
@@ -592,6 +593,61 @@ func TestGossipReplicatesTransactions(t *testing.T) {
 	}
 	if lastErr != nil {
 		t.Fatalf("transaction's Set effect did not converge to node2 within deadline: %v", lastErr)
+	}
+}
+
+// TestGossipReplicatesWasmScripts verifies a script compiled on one node
+// becomes executable on a peer node after gossip converges -- proving the
+// peer actually recompiled the source locally (there is no compiled
+// module to gossip), not just copied a string. Skips if TinyGo isn't
+// available in this environment, the same way scripting's own unit tests
+// do.
+func TestGossipReplicatesWasmScripts(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	const script = `
+package main
+
+import (
+	"bufio"
+	"fmt"
+	"os"
+)
+
+func main() {
+	scanner := bufio.NewScanner(os.Stdin)
+	scanner.Scan()
+	fmt.Printf("gossip-echo: %s\n", scanner.Text())
+}
+`
+	if _, err := node1.store.CompileScript(ctx, "gossip-echo", script); err != nil {
+		t.Skipf("WASM scripting unavailable, skipping: %v", err)
+	}
+
+	deadline := time.Now().Add(20 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		output, err := node2.store.ExecuteScript(ctx, "gossip-echo", "hello")
+		if err == nil && strings.TrimSpace(output) == "gossip-echo: hello" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 ExecuteScript(gossip-echo) = %q, err=%v, want \"gossip-echo: hello\"", output, err)
+		time.Sleep(100 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("wasm script did not converge to node2 within deadline: %v", lastErr)
 	}
 }
 

@@ -29,8 +29,28 @@ type PersistenceEngine struct {
 	stopChan         chan struct{}
 }
 
+// currentSnapshotFormatVersion is bumped whenever a change to Snapshot's
+// fields would change how an OLDER snapshot must be interpreted (not for
+// purely additive changes -- JSON already handles a new optional field
+// gracefully, an old snapshot simply won't have it and restore treats
+// that the same as "nothing to restore for this feature", exactly how
+// every feature group added after the original three already works).
+// Bump this, and add a case to upgradeSnapshot, only when an existing
+// field's meaning or shape changes in a way older data must be
+// transformed to match. Snapshots taken before this field existed at all
+// decode with FormatVersion == 0, treated as version 1 (see
+// LoadLatestSnapshot).
+const currentSnapshotFormatVersion = 1
+
 // Snapshot represents a point-in-time snapshot of store state
 type Snapshot struct {
+	// FormatVersion identifies which shape of Snapshot this is. Without
+	// it, a future format change has no way to tell "old data in the old
+	// shape" apart from "old data that happens to look like the new
+	// shape but isn't" -- silently misinterpreting a field, rather than
+	// failing loudly or upgrading it correctly, is the failure mode this
+	// exists to prevent.
+	FormatVersion    int                          `json:"format_version"`
 	Timestamp        int64                        `json:"timestamp"`
 	RateLimiters     map[string]interface{}       `json:"rate_limiters"`
 	ReplayProtection []string                     `json:"replay_protection"`
@@ -204,6 +224,7 @@ func (pe *PersistenceEngine) CreateSnapshot(snapshot *Snapshot) error {
 	// Same nanosecond-resolution reasoning as LogOperation's Timestamp --
 	// this value is the cutoff ReplayWAL filters against.
 	snapshot.Timestamp = time.Now().UnixNano()
+	snapshot.FormatVersion = currentSnapshotFormatVersion
 
 	snapshotFile := filepath.Join(
 		pe.snapshotPath,
@@ -250,7 +271,47 @@ func (pe *PersistenceEngine) LoadLatestSnapshot() (*Snapshot, error) {
 		return nil, fmt.Errorf("failed to unmarshal snapshot: %w", err)
 	}
 
+	// A snapshot taken before FormatVersion existed decodes with the
+	// JSON-unmarshal zero value (0) for that field -- that's the original
+	// shape, equivalent to version 1, not an error.
+	if snapshot.FormatVersion == 0 {
+		snapshot.FormatVersion = 1
+	}
+	if snapshot.FormatVersion > currentSnapshotFormatVersion {
+		// This binary is OLDER than whatever wrote this snapshot (e.g. a
+		// rollback to a previous release after a newer one already ran
+		// and took a snapshot in a shape this code doesn't understand).
+		// Refusing to load is the safe choice -- silently proceeding
+		// could misinterpret a field this version doesn't know the
+		// meaning of.
+		return nil, fmt.Errorf(
+			"snapshot %s has format_version %d, but this build only understands up to version %d -- refusing to load it silently (this usually means a newer version of tollmeshcache wrote this snapshot; upgrade before restoring, or restore an older snapshot file instead)",
+			snapshotFile, snapshot.FormatVersion, currentSnapshotFormatVersion,
+		)
+	}
+	if snapshot.FormatVersion < currentSnapshotFormatVersion {
+		if err := upgradeSnapshot(&snapshot); err != nil {
+			return nil, fmt.Errorf("upgrading snapshot %s from format_version %d to %d: %w", snapshotFile, snapshot.FormatVersion, currentSnapshotFormatVersion, err)
+		}
+	}
+
 	return &snapshot, nil
+}
+
+// upgradeSnapshot transforms an older-format Snapshot in place to the
+// current format. There is only one version so far (nothing to upgrade
+// from yet); this exists as the place a real transformation gets added
+// alongside the next currentSnapshotFormatVersion bump, rather than
+// scattering ad hoc "if old field is set" checks through LoadLatestSnapshot
+// itself.
+func upgradeSnapshot(snapshot *Snapshot) error {
+	switch snapshot.FormatVersion {
+	case 1:
+		snapshot.FormatVersion = currentSnapshotFormatVersion
+		return nil
+	default:
+		return fmt.Errorf("no upgrade path known from format_version %d", snapshot.FormatVersion)
+	}
 }
 
 // ReplayWAL replays all WAL entries after a given timestamp

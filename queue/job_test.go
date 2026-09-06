@@ -474,8 +474,15 @@ func TestEnqueueStaysFastWithManyPendingJobs(t *testing.T) {
 	}
 	elapsed := time.Since(start)
 
-	if elapsed > 2*time.Second {
-		t.Errorf("%d enqueues took %s, expected well under 2s -- looks like sortPendingJobs regressed back to O(n^2)", n, elapsed)
+	// Generous on purpose: this ran in ~391ms locally but took over 2s on
+	// a slower/shared CI runner, which made an earlier, tighter bound here
+	// flaky. A true O(n^2) regression for n=5000 would take vastly longer
+	// than 10s regardless of machine speed (the old implementation's own
+	// live measurement showed individual per-request latency climbing
+	// into the *seconds* well before reaching this many pending jobs), so
+	// this still easily catches the regression it's guarding against.
+	if elapsed > 10*time.Second {
+		t.Errorf("%d enqueues took %s, expected well under 10s -- looks like sortPendingJobs regressed back to O(n^2)", n, elapsed)
 	}
 	t.Logf("%d enqueues took %s", n, elapsed)
 

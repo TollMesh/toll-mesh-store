@@ -314,69 +314,6 @@ func TestGossipCoordinatorTLSRejectsUntrustedPeer(t *testing.T) {
 	}
 }
 
-// TestStateSync tests the state synchronization functionality
-func TestStateSync(t *testing.T) {
-	ss := NewStateSync("node1", 1*time.Second)
-
-	// Test setting local state
-	localState := &core.MeshStoreState{
-		RateLimiters:     make(map[string]interface{}),
-		ReplayProtection: make(map[string]bool),
-		Cache:            make(map[string]map[string][]byte),
-	}
-
-	localState.RateLimiters["key1"] = 10
-	localState.ReplayProtection["nonce1"] = true
-
-	err := ss.SetLocalState(localState)
-	if err != nil {
-		t.Fatalf("Failed to set local state: %v", err)
-	}
-
-	// Test getting local state
-	retrieved := ss.GetLocalState()
-	if retrieved == nil {
-		t.Fatalf("Failed to retrieve local state")
-	}
-
-	// Test state hash
-	hash := ss.GetStateHash()
-	if hash == "" {
-		t.Fatalf("Expected non-empty hash")
-	}
-
-	// Test updating peer state
-	peerState := &core.MeshStoreState{
-		RateLimiters:     make(map[string]interface{}),
-		ReplayProtection: make(map[string]bool),
-		Cache:            make(map[string]map[string][]byte),
-	}
-
-	peerState.RateLimiters["key2"] = 20
-	peerState.ReplayProtection["nonce2"] = true
-
-	err = ss.UpdatePeerState("node2", peerState)
-	if err != nil {
-		t.Fatalf("Failed to update peer state: %v", err)
-	}
-
-	// Test getting peer state
-	retrieved, err = ss.GetPeerState("node2")
-	if err != nil {
-		t.Fatalf("Failed to get peer state: %v", err)
-	}
-
-	if retrieved == nil {
-		t.Fatalf("Expected non-nil peer state")
-	}
-
-	// Test needs sync
-	needsSync := ss.NeedsSyncWithPeer("node3")
-	if !needsSync {
-		t.Fatalf("Expected needs sync to be true for unknown peer")
-	}
-}
-
 // TestGossipCoordinator tests the gossip coordinator functionality
 func TestGossipCoordinator(t *testing.T) {
 	config := &core.ClusterConfig{

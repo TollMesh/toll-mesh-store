@@ -362,6 +362,96 @@ func TestReplayDeadLetter(t *testing.T) {
 	}
 }
 
+// TestMergeSnapshotAdoptsNewerPeerJob is the regression test for job queue
+// gossip replication: MergeSnapshot must adopt a peer's job version only
+// when it's strictly newer (by UpdatedAt, then Node), the same LWW-register
+// rule as Cache/Pipelines/Search, and must place the adopted job into the
+// correct derived list (PendingJobs/ProcessingJobs) for its new status.
+func TestMergeSnapshotAdoptsNewerPeerJob(t *testing.T) {
+	jm := NewJobManager("node-1")
+	defer jm.Stop()
+
+	job, _ := jm.Enqueue("q", []byte("payload"), DefaultJobOptions())
+	q := jm.GetOrCreateQueue("q")
+
+	// An older/stale peer version of this job (still pending) must not
+	// overwrite the newer local one.
+	stale := *job
+	stale.UpdatedAt = job.UpdatedAt - 1000
+	stale.Node = "node-2"
+	stale.Status = StatusCancelled
+	q.MergeSnapshot([]Job{stale})
+
+	local, _ := q.GetStatus(job.ID)
+	if local.Status != StatusPending {
+		t.Fatalf("older peer job incorrectly adopted, status = %s", local.Status)
+	}
+
+	// A newer peer version claiming the job (from a different node) must be
+	// adopted, and the job must move from PendingJobs to ProcessingJobs.
+	newer := *job
+	newer.UpdatedAt = job.UpdatedAt + 1000
+	newer.Node = "node-2"
+	newer.Status = StatusProcessing
+	newer.ProcessedBy = "worker-on-node-2"
+	q.MergeSnapshot([]Job{newer})
+
+	local, _ = q.GetStatus(job.ID)
+	if local.Status != StatusProcessing || local.ProcessedBy != "worker-on-node-2" {
+		t.Fatalf("newer peer job not adopted correctly: %+v", local)
+	}
+
+	q.mu.RLock()
+	inPending := false
+	for _, id := range q.PendingJobs {
+		if id == job.ID {
+			inPending = true
+		}
+	}
+	inProcessing := false
+	for _, id := range q.ProcessingJobs {
+		if id == job.ID {
+			inProcessing = true
+		}
+	}
+	q.mu.RUnlock()
+
+	if inPending {
+		t.Error("job still in PendingJobs after being adopted as Processing")
+	}
+	if !inProcessing {
+		t.Error("job not in ProcessingJobs after being adopted as Processing")
+	}
+}
+
+// TestMergeSnapshotInsertsUnknownPeerJob verifies a job enqueued on a peer
+// and never seen locally is inserted outright by MergeSnapshot, including
+// into JobManager's per-queue map (auto-creating the queue).
+func TestMergeSnapshotInsertsUnknownPeerJob(t *testing.T) {
+	jm := NewJobManager("node-1")
+	defer jm.Stop()
+
+	peerJob := Job{
+		ID:         "peer-job-1",
+		Queue:      "peer-queue",
+		Payload:    []byte("from node-2"),
+		Status:     StatusPending,
+		UpdatedAt:  time.Now().UnixMilli(),
+		Node:       "node-2",
+		MaxRetries: 3,
+	}
+
+	jm.MergeSnapshot(map[string][]Job{"peer-queue": {peerJob}})
+
+	status, err := jm.GetJobStatus("peer-queue", "peer-job-1")
+	if err != nil {
+		t.Fatalf("peer job not found after merge: %v", err)
+	}
+	if status.Status != StatusPending || status.Node != "node-2" {
+		t.Fatalf("unexpected merged job state: %+v", status)
+	}
+}
+
 func BenchmarkEnqueue(b *testing.B) {
 	jm := NewJobManager("node-1")
 	defer jm.Stop()

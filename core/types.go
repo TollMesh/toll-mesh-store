@@ -193,4 +193,16 @@ type MeshStoreState struct {
 	// pattern as Cache and Pipelines. Known limitation: document deletion
 	// does not replicate (see MergeSnapshot's doc comment).
 	SearchDocuments []search.Document
+
+	// JobQueues holds every queue's full job log (via queue.JobManager.
+	// Snapshot), keyed by queue name. Merging (JobManager.MergeSnapshot) is
+	// a (UpdatedAt, Node) LWW-register comparison per job ID, the same
+	// pattern as Cache/Pipelines/Search. Known limitation, more
+	// consequential than the other features' gaps: this converges state
+	// eventually but does not provide exclusive claims across nodes -- two
+	// nodes can each claim the same pending job before a gossip round tells
+	// either about the other's claim, making job processing at-least-once
+	// across the cluster rather than exactly-once (see JobQueue.
+	// MergeSnapshot's doc comment).
+	JobQueues map[string][]queue.Job
 }

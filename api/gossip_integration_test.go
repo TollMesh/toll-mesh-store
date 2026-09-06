@@ -423,6 +423,65 @@ func TestGossipReplicatesSearchDocuments(t *testing.T) {
 	}
 }
 
+// TestGossipReplicatesJobQueues verifies a job enqueued on one node becomes
+// visible (via GetJobStatus) on a peer node after gossip converges, and
+// that a claim made on the *enqueuing* node's peer also propagates back --
+// i.e. both directions of the JobManager.Snapshot/MergeSnapshot LWW merge
+// work, not just simple insertion of a new job.
+func TestGossipReplicatesJobQueues(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	job, err := node1.store.Enqueue(ctx, "jobs", []byte("payload"), 5, 3, time.Hour)
+	if err != nil {
+		t.Fatalf("node1 Enqueue failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := node2.store.GetJobStatus(ctx, "jobs", job.ID)
+		if err == nil && status.Status == "pending" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 GetJobStatus(%s) = %+v, err=%v, want status pending", job.ID, status, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("job did not converge to node2 within deadline: %v", lastErr)
+	}
+
+	// Claim it on node2, and confirm the claim propagates back to node1.
+	if _, err := node2.store.ClaimJob(ctx, "jobs", "worker-on-node2"); err != nil {
+		t.Fatalf("node2 ClaimJob failed: %v", err)
+	}
+
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		status, err := node1.store.GetJobStatus(ctx, "jobs", job.ID)
+		if err == nil && status.Status == "processing" && status.ProcessedBy == "worker-on-node2" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node1 GetJobStatus(%s) = %+v, err=%v, want status processing by worker-on-node2", job.ID, status, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("job claim did not converge back to node1 within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

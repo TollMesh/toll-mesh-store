@@ -37,7 +37,9 @@ type Job struct {
 	DeadlineAt    int64                   `json:"deadline_at"`
 	ProcessStarted int64                  `json:"process_started"`
 	ProcessEnded  int64                   `json:"process_ended"`
-	mu            sync.RWMutex            `json:"-"`
+	// Node is this job's LWW-register tiebreaker for gossip replication,
+	// alongside UpdatedAt. Stamped by JobQueue on every mutation.
+	Node          string                  `json:"node"`
 }
 
 // JobQueue represents a distributed job queue
@@ -54,6 +56,7 @@ type JobQueue struct {
 	maxAge        time.Duration       // Clean up old jobs
 	retryPolicy   RetryPolicy
 	deadLetterQ   *DeadLetterQueue
+	nodeID        string              // stamped onto Job.Node on every mutation, for gossip LWW
 }
 
 // Worker represents a job worker
@@ -81,7 +84,7 @@ type DeadLetterQueue struct {
 }
 
 // NewJobQueue creates a new distributed job queue
-func NewJobQueue(name string, maxAge time.Duration) *JobQueue {
+func NewJobQueue(name string, maxAge time.Duration, nodeID string) *JobQueue {
 	return &JobQueue{
 		Name:           name,
 		Jobs:           make([]*Job, 0),
@@ -91,6 +94,7 @@ func NewJobQueue(name string, maxAge time.Duration) *JobQueue {
 		Subscribers:    make(map[string]*Worker),
 		vectorClock:    make(map[string]int64),
 		maxAge:         maxAge,
+		nodeID:         nodeID,
 		retryPolicy: RetryPolicy{
 			MaxRetries:     3,
 			InitialBackoff: 1 * time.Second,
@@ -126,6 +130,7 @@ func (jq *JobQueue) Enqueue(payload []byte, priority int, maxRetries int, deadli
 		CreatedAt:  time.Now().UnixMilli(),
 		UpdatedAt:  time.Now().UnixMilli(),
 		DeadlineAt: time.Now().Add(deadline).UnixMilli(),
+		Node:       jq.nodeID,
 	}
 
 	// Add to log (append-only)
@@ -167,6 +172,7 @@ func (jq *JobQueue) GetNextJob(workerID string) (*Job, error) {
 			job.ProcessedBy = workerID
 			job.ProcessStarted = time.Now().UnixMilli()
 			job.UpdatedAt = job.ProcessStarted
+			job.Node = jq.nodeID
 
 			// Remove from pending, add to processing
 			jq.PendingJobs = append(jq.PendingJobs[:i], jq.PendingJobs[i+1:]...)
@@ -208,6 +214,7 @@ func (jq *JobQueue) MarkComplete(jobID string, result []byte) error {
 	job.Result = result
 	job.ProcessEnded = time.Now().UnixMilli()
 	job.UpdatedAt = job.ProcessEnded
+	job.Node = jq.nodeID
 
 	// Remove from processing
 	jq.removeFromProcessing(jobID)
@@ -229,6 +236,7 @@ func (jq *JobQueue) MarkFailed(jobID string, errMsg string) error {
 	job.RetryCount++
 	job.ProcessEnded = time.Now().UnixMilli()
 	job.UpdatedAt = job.ProcessEnded
+	job.Node = jq.nodeID
 
 	// Remove from processing
 	jq.removeFromProcessing(jobID)
@@ -294,6 +302,78 @@ func (jq *JobQueue) GetDeadLetterQueue() []*Job {
 	return result
 }
 
+// Snapshot returns a copy of every job ever seen by this queue (its
+// append-only log), for gossip replication.
+func (jq *JobQueue) Snapshot() []Job {
+	jq.mu.RLock()
+	defer jq.mu.RUnlock()
+
+	out := make([]Job, 0, len(jq.Jobs))
+	for _, j := range jq.Jobs {
+		out = append(out, *j)
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: a (UpdatedAt, Node)
+// LWW-register comparison per job ID, the same pattern as Cache, Pipelines,
+// and Search -- a peer's version of a job is adopted only when it's
+// strictly newer. A job unknown locally is inserted outright.
+//
+// Known limitation, more consequential than the other features' gaps: this
+// converges *state* (a job's status, result, retry count) eventually, but
+// does not provide exclusive claims across nodes. JobQueue.GetNextJob's
+// CAS-like check only prevents two workers on the *same* node from
+// claiming the same job -- two different nodes can each claim the same
+// pending job locally before a gossip round tells either about the other's
+// claim, and both workers will process it. This makes job processing
+// at-least-once across the cluster, not exactly-once, which is a real
+// behavior change or existing single-node deployments should not silently
+// pick up by installing a busy or slow-gossiping cluster. There is no
+// tombstone concern here (unlike Pipelines/Search) since jobs are never
+// deleted, only transitioned between statuses.
+func (jq *JobQueue) MergeSnapshot(peerJobs []Job) {
+	jq.mu.Lock()
+	defer jq.mu.Unlock()
+
+	for i := range peerJobs {
+		peer := &peerJobs[i]
+		local, exists := jq.JobIndex[peer.ID]
+
+		if exists && !jobLess(local.UpdatedAt, local.Node, peer.UpdatedAt, peer.Node) {
+			continue
+		}
+
+		peerCopy := *peer
+		newJob := &peerCopy
+
+		if !exists {
+			jq.Jobs = append(jq.Jobs, newJob)
+		} else {
+			jq.removeFromPending(local.ID)
+			jq.removeFromProcessing(local.ID)
+		}
+		jq.JobIndex[newJob.ID] = newJob
+
+		switch newJob.Status {
+		case StatusPending:
+			jq.PendingJobs = append(jq.PendingJobs, newJob.ID)
+		case StatusProcessing:
+			jq.ProcessingJobs = append(jq.ProcessingJobs, newJob.ID)
+		}
+	}
+	jq.sortPendingJobs()
+}
+
+// jobLess reports whether (tsA, nodeA) sorts strictly before (tsB, nodeB)
+// in the job LWW-register's version order.
+func jobLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
+	if tsA != tsB {
+		return tsA < tsB
+	}
+	return nodeA < nodeB
+}
+
 // Helper functions
 
 func (jq *JobQueue) sortPendingJobs() {
@@ -310,6 +390,15 @@ func (jq *JobQueue) sortPendingJobs() {
 				// Older jobs first if same priority
 				jq.PendingJobs[i], jq.PendingJobs[j] = jq.PendingJobs[j], jq.PendingJobs[i]
 			}
+		}
+	}
+}
+
+func (jq *JobQueue) removeFromPending(jobID string) {
+	for i, id := range jq.PendingJobs {
+		if id == jobID {
+			jq.PendingJobs = append(jq.PendingJobs[:i], jq.PendingJobs[i+1:]...)
+			break
 		}
 	}
 }

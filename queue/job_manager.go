@@ -43,7 +43,7 @@ func (jm *JobManager) GetOrCreateQueue(name string) *JobQueue {
 		return q
 	}
 
-	q := NewJobQueue(name, 24*time.Hour)
+	q := NewJobQueue(name, 24*time.Hour, jm.nodeID)
 	jm.queues[name] = q
 
 	// Initialize acknowledgments map for this queue
@@ -155,6 +155,33 @@ func (jm *JobManager) GetAllStats() map[string]map[string]interface{} {
 	}
 
 	return result
+}
+
+// Snapshot returns every queue's full job log (via JobQueue.Snapshot),
+// keyed by queue name, for gossip replication.
+func (jm *JobManager) Snapshot() map[string][]Job {
+	jm.mu.RLock()
+	queues := make(map[string]*JobQueue, len(jm.queues))
+	for name, q := range jm.queues {
+		queues[name] = q
+	}
+	jm.mu.RUnlock()
+
+	out := make(map[string][]Job, len(queues))
+	for name, q := range queues {
+		out[name] = q.Snapshot()
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output into every named queue (via
+// JobQueue.MergeSnapshot), creating any queue this node hasn't seen yet.
+// See JobQueue.MergeSnapshot's doc comment for the LWW merge rule and its
+// known at-least-once-across-nodes limitation.
+func (jm *JobManager) MergeSnapshot(snapshot map[string][]Job) {
+	for name, jobs := range snapshot {
+		jm.GetOrCreateQueue(name).MergeSnapshot(jobs)
+	}
 }
 
 // GetDeadLetterQueue returns dead-lettered jobs for a queue

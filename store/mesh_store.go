@@ -924,6 +924,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	// MeshStore itself protects with zsetsMu/streamsMu).
 	pipelines := ms.pipelines.Snapshot()
 	searchDocuments := ms.searchEngine.Snapshot()
+	jobQueues := ms.jobManager.Snapshot()
 
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
@@ -936,6 +937,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		Streams:          streams,
 		Pipelines:        pipelines,
 		SearchDocuments:  searchDocuments,
+		JobQueues:        jobQueues,
 	}
 }
 
@@ -1041,6 +1043,8 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	ms.pipelines.MergeSnapshot(peer.Pipelines)
 
 	ms.searchEngine.MergeSnapshot(peer.SearchDocuments)
+
+	ms.jobManager.MergeSnapshot(peer.JobQueues)
 }
 
 // cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,

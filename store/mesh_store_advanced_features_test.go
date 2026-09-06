@@ -194,6 +194,44 @@ func TestMeshStore_Rank(t *testing.T) {
 	}
 }
 
+func TestMeshStore_RankingConfig_RegisterAndExecuteByName(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.RegisterRankingConfig(ctx, "boost-a", "context", map[string]float32{"a": 10}); err != nil {
+		t.Fatalf("register failed: %v", err)
+	}
+
+	cfg, err := s.GetRankingConfig(ctx, "boost-a")
+	if err != nil {
+		t.Fatalf("get failed: %v", err)
+	}
+	if cfg.Strategy != "context" {
+		t.Errorf("expected strategy context, got %s", cfg.Strategy)
+	}
+
+	items := []ranking.RankedItem{{ID: "a", Score: 1}, {ID: "b", Score: 3}}
+	result, err := s.RankWithConfig(ctx, "boost-a", items)
+	if err != nil {
+		t.Fatalf("rank with config failed: %v", err)
+	}
+	if result[0].ID != "a" {
+		t.Errorf("expected boosted 'a' to rank first, got %s", result[0].ID)
+	}
+
+	configs := s.ListRankingConfigs(ctx)
+	if len(configs) != 1 {
+		t.Errorf("expected 1 registered config, got %d", len(configs))
+	}
+
+	if err := s.DeleteRankingConfig(ctx, "boost-a"); err != nil {
+		t.Fatalf("delete failed: %v", err)
+	}
+	if _, err := s.GetRankingConfig(ctx, "boost-a"); err == nil {
+		t.Error("expected config to be gone after delete")
+	}
+}
+
 func TestMeshStore_Metrics_RecordsRealOperations(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -276,9 +314,10 @@ func TestMeshStore_ClusterMetrics_MergesPerNodeCountsAsGCounter(t *testing.T) {
 // (rate limiting, replay protection, cache), so a lone node with no peers
 // (or an entire cluster restarting at once) silently lost every Sorted
 // Set/Stream/Pipeline/Search document/Job/Pub-Sub message/Transaction/
-// WASM script/Metric on restart, since none of them were ever WAL-logged
-// either. This exercises all nine through a real snapshot-then-restore
-// round trip on a single store (no peers, no gossip involved at all).
+// WASM script/Metric/(now) named Ranking config on restart, since none of
+// them were ever WAL-logged either. This exercises all ten through a real
+// snapshot-then-restore round trip on a single store (no peers, no gossip
+// involved at all).
 func TestMeshStore_Snapshot_CoversAllNineNewerFeatureGroups(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()
@@ -309,6 +348,9 @@ func TestMeshStore_Snapshot_CoversAllNineNewerFeatureGroups(t *testing.T) {
 		t.Fatalf("BeginTransaction failed: %v", err)
 	}
 	s.Consume(ctx, "rate-key", 100, time.Minute)
+	if err := s.RegisterRankingConfig(ctx, "boost-a", "context", map[string]float32{"a": 10}); err != nil {
+		t.Fatalf("RegisterRankingConfig failed: %v", err)
+	}
 
 	if err := s.CreateSnapshot(ctx); err != nil {
 		t.Fatalf("create snapshot failed: %v", err)
@@ -348,6 +390,9 @@ func TestMeshStore_Snapshot_CoversAllNineNewerFeatureGroups(t *testing.T) {
 	consumeTotal, ok := cluster["consume_total"].(map[string]interface{})
 	if !ok || consumeTotal["total"].(int64) < 1 {
 		t.Errorf("metrics not restored: %+v", cluster["consume_total"])
+	}
+	if cfg, err := fresh.GetRankingConfig(ctx, "boost-a"); err != nil || cfg.Strategy != "context" {
+		t.Errorf("ranking config not restored: cfg=%+v err=%v", cfg, err)
 	}
 }
 

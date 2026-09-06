@@ -63,6 +63,7 @@ type MeshStore struct {
 	wasmUnavailable error                 // reason wasmEngine is nil, if it is
 	searchEngine    *search.HybridSearchEngine
 	metricsColl     *metrics.Metrics
+	rankingConfigs  *ranking.Registry
 	// clusterMetrics accumulates every node's own reported counter values
 	// (via metrics.Metrics.Snapshot), keyed by metric name then node ID --
 	// a real GCounter-shaped CRDT: this node only ever writes its own
@@ -106,6 +107,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		searchEngine:     search.NewHybridSearchEngine(),
 		metricsColl:      metrics.NewMetrics(),
 		clusterMetrics:   make(map[string]map[string]int64),
+		rankingConfigs:   ranking.NewRegistry(),
 	}
 
 	// WASM scripting requires the external TinyGo toolchain, which is a
@@ -817,6 +819,8 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		wasmScripts = ms.wasmEngine.Snapshot()
 	}
 
+	rankingConfigs := ms.rankingConfigs.Snapshot()
+
 	snap := &persistence.Snapshot{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: replayProtection,
@@ -837,6 +841,7 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		Transactions:    ms.txnManager.Snapshot(),
 		WasmScripts:     wasmScripts,
 		Metrics:         clusterMetricsCopy,
+		RankingConfigs:  rankingConfigs,
 	}
 
 	if err := ms.persistence.CreateSnapshot(snap); err != nil {
@@ -935,6 +940,8 @@ func (ms *MeshStore) applySnapshotLocked(snap *persistence.Snapshot) {
 		}
 		ms.clusterMetrics[name] = inner
 	}
+
+	ms.rankingConfigs.MergeSnapshot(snap.RankingConfigs)
 }
 
 // restoreCacheLocked is the inverse of copyCacheLocked: reassembles the
@@ -985,10 +992,11 @@ func (ms *MeshStore) GetPersistenceStats(ctx context.Context) map[string]interfa
 // own MergeState. The original three CRDT-backed primitives (rate
 // limiting, replay protection, cache) plus Sorted Sets, Streams,
 // Pipelines, Search, Job Queues, Pub/Sub, Transactions, WASM Scripting,
-// and (the monotonic-counter subset of) Metrics are covered -- Persistence
-// and Ranking are not part of this state and remain single-node only (see
-// docs/architecture.md's gossip section for why each of those doesn't
-// fit).
+// (the monotonic-counter subset of) Metrics, and named Ranking configs
+// are covered -- Persistence is the one feature group that is not part of
+// this state and remains single-node only (its WAL/snapshot files are a
+// per-node durability mechanism, not data with a CRDT of its own; see
+// docs/architecture.md's gossip section).
 
 // stampLocalMetrics writes this node's current counter values into
 // clusterMetrics under its own short lock, so callers that separately read
@@ -1075,6 +1083,8 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		wasmScripts = ms.wasmEngine.Snapshot()
 	}
 
+	rankingConfigs := ms.rankingConfigs.Snapshot()
+
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
 		ReplayProtection: boolMap(ms.replayProtection.Snapshot()),
@@ -1091,6 +1101,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		Transactions:     txns,
 		WasmScripts:      wasmScripts,
 		Metrics:          clusterMetricsCopy,
+		RankingConfigs:   rankingConfigs,
 	}
 }
 
@@ -1206,6 +1217,8 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	if ms.wasmEngine != nil {
 		ms.wasmEngine.MergeSnapshot(peer.WasmScripts)
 	}
+
+	ms.rankingConfigs.MergeSnapshot(peer.RankingConfigs)
 
 	// Metrics: a real GCounter-shaped merge -- max per (metric, node) pair,
 	// same rule as RateLimiters' core.GCounter.Merge, just inlined here
@@ -1393,22 +1406,36 @@ func (ms *MeshStore) DeleteSearchDocument(ctx context.Context, id string) error 
 // actual LLM call). boosts, if non-nil, applies to the "context" strategy
 // as per-ID score multipliers.
 func (ms *MeshStore) Rank(ctx context.Context, items []ranking.RankedItem, strategy string, boosts map[string]float32) []ranking.RankedItem {
-	var ranker ranking.Ranker
-	switch strategy {
-	case "vector":
-		ranker = ranking.NewVectorRanker()
-	case "llm":
-		ranker = ranking.NewLLMRanker()
-	case "context":
-		ctxMap := map[string]interface{}{}
-		if boosts != nil {
-			ctxMap["boosts"] = boosts
-		}
-		ranker = ranking.NewContextRanker(ctxMap)
-	default:
-		ranker = ranking.NewBM25Ranker()
-	}
-	return ranker.Rank(items)
+	return ranking.BuildRanker(strategy, boosts).Rank(items)
+}
+
+// RegisterRankingConfig saves a named, reusable ranking configuration so
+// later calls can reference it by name (RankWithConfig) instead of
+// resending strategy/boosts every time -- the same shape RegisterPipeline
+// gives operation sequences.
+func (ms *MeshStore) RegisterRankingConfig(ctx context.Context, name, strategy string, boosts map[string]float32) error {
+	cfg := &ranking.RankingConfig{Name: name, Strategy: strategy, Boosts: boosts, Node: ms.config.NodeName}
+	return ms.rankingConfigs.Register(cfg)
+}
+
+// GetRankingConfig retrieves a registered ranking config by name.
+func (ms *MeshStore) GetRankingConfig(ctx context.Context, name string) (*ranking.RankingConfig, error) {
+	return ms.rankingConfigs.Get(name)
+}
+
+// ListRankingConfigs returns every registered ranking config.
+func (ms *MeshStore) ListRankingConfigs(ctx context.Context) []*ranking.RankingConfig {
+	return ms.rankingConfigs.List()
+}
+
+// DeleteRankingConfig removes a registered ranking config.
+func (ms *MeshStore) DeleteRankingConfig(ctx context.Context, name string) error {
+	return ms.rankingConfigs.Delete(name)
+}
+
+// RankWithConfig ranks items using a previously registered ranking config.
+func (ms *MeshStore) RankWithConfig(ctx context.Context, name string, items []ranking.RankedItem) ([]ranking.RankedItem, error) {
+	return ms.rankingConfigs.RankWithConfig(name, items)
 }
 
 // ===== Metrics =====

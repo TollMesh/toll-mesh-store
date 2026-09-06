@@ -107,6 +107,16 @@ type Store interface {
 	// Ranking
 	Rank(ctx context.Context, items []ranking.RankedItem, strategy string, boosts map[string]float32) []ranking.RankedItem
 
+	// Ranking configs -- a named, reusable (strategy, boosts) pair,
+	// registered once and referenced by name on later rank calls instead
+	// of resending strategy/boosts every time. Replicates across nodes
+	// the same way Pipelines does.
+	RegisterRankingConfig(ctx context.Context, name, strategy string, boosts map[string]float32) error
+	GetRankingConfig(ctx context.Context, name string) (*ranking.RankingConfig, error)
+	ListRankingConfigs(ctx context.Context) []*ranking.RankingConfig
+	DeleteRankingConfig(ctx context.Context, name string) error
+	RankWithConfig(ctx context.Context, name string, items []ranking.RankedItem) ([]ranking.RankedItem, error)
+
 	// Metrics
 	GetMetrics(ctx context.Context) map[string]interface{}
 	GetPrometheusMetrics(ctx context.Context) string
@@ -266,4 +276,13 @@ type MeshStoreState struct {
 	// aggregates raw buckets, which this project's ring-buffer sampling
 	// doesn't preserve).
 	Metrics map[string]map[string]int64
+
+	// RankingConfigs holds every named ranking configuration (via
+	// ranking.Registry.Snapshot) -- a tenth feature group, added after
+	// Metrics, giving Ranking a genuine registry to replicate instead of
+	// remaining purely stateless. Merging (MergeSnapshot) is a (Created,
+	// Node) LWW-register comparison per config name, the same pattern as
+	// Pipelines. Known limitation, the same as Pipelines: deleting a
+	// config does not replicate (see MergeSnapshot's doc comment).
+	RankingConfigs []ranking.RankingConfig
 }

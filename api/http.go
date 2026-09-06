@@ -173,6 +173,11 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 
 	// Ranking
 	hs.mux.HandleFunc("/rank", hs.handleRank)
+	hs.mux.HandleFunc("/rank/config/register", hs.handleRegisterRankingConfig)
+	hs.mux.HandleFunc("/rank/config/get", hs.handleGetRankingConfig)
+	hs.mux.HandleFunc("/rank/config/list", hs.handleListRankingConfigs)
+	hs.mux.HandleFunc("/rank/config/delete", hs.handleDeleteRankingConfig)
+	hs.mux.HandleFunc("/rank/config/execute", hs.handleRankWithConfig)
 
 	// Metrics
 	hs.mux.HandleFunc("/metrics", hs.handleMetrics)
@@ -1592,6 +1597,101 @@ func (hs *HTTPServer) handleRank(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	result := hs.store.Rank(r.Context(), req.Items, req.Strategy, req.Boosts)
+	writeJSON(w, http.StatusOK, map[string]interface{}{"items": result})
+}
+
+// RegisterRankingConfigRequest represents a named ranking config
+// registration request
+type RegisterRankingConfigRequest struct {
+	Name     string             `json:"name"`
+	Strategy string             `json:"strategy"`
+	Boosts   map[string]float32 `json:"boosts,omitempty"`
+}
+
+func (hs *HTTPServer) handleRegisterRankingConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RegisterRankingConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := hs.store.RegisterRankingConfig(r.Context(), req.Name, req.Strategy, req.Boosts); err != nil {
+		writeError(w, http.StatusBadRequest, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+func (hs *HTTPServer) handleGetRankingConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	name := r.URL.Query().Get("name")
+	cfg, err := hs.store.GetRankingConfig(r.Context(), name)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, cfg)
+}
+
+func (hs *HTTPServer) handleListRankingConfigs(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]interface{}{"configs": hs.store.ListRankingConfigs(r.Context())})
+}
+
+// DeleteRankingConfigRequest represents a named ranking config deletion
+// request
+type DeleteRankingConfigRequest struct {
+	Name string `json:"name"`
+}
+
+func (hs *HTTPServer) handleDeleteRankingConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req DeleteRankingConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	if err := hs.store.DeleteRankingConfig(r.Context(), req.Name); err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+}
+
+// RankWithConfigRequest represents a named-ranking-config execution
+// request
+type RankWithConfigRequest struct {
+	Name  string               `json:"name"`
+	Items []ranking.RankedItem `json:"items"`
+}
+
+func (hs *HTTPServer) handleRankWithConfig(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	var req RankWithConfigRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "Invalid request", http.StatusBadRequest)
+		return
+	}
+	result, err := hs.store.RankWithConfig(r.Context(), req.Name, req.Items)
+	if err != nil {
+		writeError(w, http.StatusNotFound, err)
+		return
+	}
 	writeJSON(w, http.StatusOK, map[string]interface{}{"items": result})
 }
 

@@ -14,6 +14,7 @@ import (
 	"github.com/toll-mesh/store/coordination"
 	"github.com/toll-mesh/store/core"
 	"github.com/toll-mesh/store/scripting"
+	"github.com/toll-mesh/store/ranking"
 	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/store"
 	"github.com/toll-mesh/store/transactions"
@@ -691,6 +692,44 @@ func TestGossipReplicatesClusterMetrics(t *testing.T) {
 	}
 	if lastErr != nil {
 		t.Fatalf("cluster metrics did not converge to node2 within deadline: %v", lastErr)
+	}
+}
+
+// TestGossipReplicatesRankingConfigs verifies a named ranking config
+// registered on one node becomes usable (via RankWithConfig) on a peer
+// node after gossip converges.
+func TestGossipReplicatesRankingConfigs(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if err := node1.store.RegisterRankingConfig(ctx, "boost-b", "context", map[string]float32{"b": 10}); err != nil {
+		t.Fatalf("node1 RegisterRankingConfig failed: %v", err)
+	}
+
+	items := []ranking.RankedItem{{ID: "a", Score: 1}, {ID: "b", Score: 1}}
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		result, err := node2.store.RankWithConfig(ctx, "boost-b", items)
+		if err == nil && len(result) > 0 && result[0].ID == "b" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 RankWithConfig(boost-b) = %+v, err=%v, want \"b\" boosted to rank first", result, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("ranking config did not converge to node2 within deadline: %v", lastErr)
 	}
 }
 

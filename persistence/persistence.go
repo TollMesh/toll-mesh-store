@@ -11,6 +11,7 @@ import (
 
 	"github.com/toll-mesh/store/pubsub"
 	"github.com/toll-mesh/store/queue"
+	"github.com/toll-mesh/store/ranking"
 	"github.com/toll-mesh/store/scripting"
 	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/sortedset"
@@ -71,6 +72,11 @@ type Snapshot struct {
 	// node's own startup, once per script, if any were registered.
 	WasmScripts []scripting.CompiledScript  `json:"wasm_scripts,omitempty"`
 	Metrics     map[string]map[string]int64 `json:"metrics,omitempty"`
+	// RankingConfigs holds every named ranking configuration -- see
+	// ranking.Registry's doc comments; it's a tenth feature group added
+	// after the original nine, following the exact same Snapshot/
+	// MergeSnapshot reuse pattern.
+	RankingConfigs []ranking.RankingConfig `json:"ranking_configs,omitempty"`
 }
 
 // WALEntry represents a write-ahead log entry

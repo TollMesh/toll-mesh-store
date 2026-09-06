@@ -238,6 +238,7 @@ Every node operates independently with automatic convergence.
 - [API Reference](api-reference.md) - Complete endpoint documentation
 - [Architecture Guide](architecture.md) - Design and consistency model
 - [vs Redis](vs-redis.md) - Feature comparison and selection criteria
+- [Operations Runbook](operations.md) - Running a cluster: starting, adding/removing nodes, health signals, incidents, disaster recovery, TLS, monitoring
 - [Publishing Guide](publishing-guide.md) - CI/CD automation for 7 languages
 
 ---

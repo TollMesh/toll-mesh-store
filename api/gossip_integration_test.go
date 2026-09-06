@@ -482,6 +482,54 @@ func TestGossipReplicatesJobQueues(t *testing.T) {
 	}
 }
 
+// TestGossipReplicatesPubSubMessageHistory verifies a message published on
+// one node becomes visible on a peer node after gossip converges -- via the
+// topic list and total message count MeshStore actually exposes (there is
+// no HTTP-level message-history read, so this is the strongest available
+// black-box check). This does not (and per MergeSnapshot's doc comment,
+// cannot) prove live delivery to a Subscriber channel across nodes -- only
+// that the topic's message history/stats themselves converge.
+func TestGossipReplicatesPubSubMessageHistory(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if _, err := node1.store.Publish(ctx, "announcements", "node1-publisher", []byte("hello from node1")); err != nil {
+		t.Fatalf("node1 Publish failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		topics := node2.store.GetTopics(ctx)
+		stats := node2.store.GetPubSubStats(ctx)
+		hasTopic := false
+		for _, name := range topics {
+			if name == "announcements" {
+				hasTopic = true
+			}
+		}
+		if hasTopic && stats["total_messages"] == 1 {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 topics=%v stats=%+v, want \"announcements\" present with 1 total message", topics, stats)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("pub/sub message history did not converge to node2 within deadline: %v", lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

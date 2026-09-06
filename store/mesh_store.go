@@ -91,7 +91,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		zsets:            make(map[string]*sortedset.SortedSet),
 		streams:          make(map[string]*stream.Stream),
 		groups:           make(map[string]*stream.ConsumerGroup),
-		pubsubBroker:     pubsub.NewPubSubBroker(1000),
+		pubsubBroker:     pubsub.NewPubSubBroker(1000, config.NodeName),
 		txnManager:       transactions.NewTransactionManager(1000, 5*time.Minute),
 		persistence:      pe,
 		pipelines:        scripting.NewEngine(50, 30*time.Second),
@@ -925,6 +925,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	pipelines := ms.pipelines.Snapshot()
 	searchDocuments := ms.searchEngine.Snapshot()
 	jobQueues := ms.jobManager.Snapshot()
+	pubsubMessages := ms.pubsubBroker.Snapshot()
 
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
@@ -938,6 +939,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		Pipelines:        pipelines,
 		SearchDocuments:  searchDocuments,
 		JobQueues:        jobQueues,
+		PubSubMessages:   pubsubMessages,
 	}
 }
 
@@ -1045,6 +1047,8 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	ms.searchEngine.MergeSnapshot(peer.SearchDocuments)
 
 	ms.jobManager.MergeSnapshot(peer.JobQueues)
+
+	ms.pubsubBroker.MergeSnapshot(peer.PubSubMessages)
 }
 
 // cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,

@@ -6,7 +6,7 @@ import (
 )
 
 func TestSubscribePublish(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 
 	ch, err := pb.Subscribe("sub-1", "news", "")
 	if err != nil {
@@ -32,7 +32,7 @@ func TestSubscribePublish(t *testing.T) {
 }
 
 func TestPublishToTopicWithNoSubscribers(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	// Redis PUBLISH never errors for a channel with no subscribers, it just
 	// delivers to zero. A topic nobody has ever subscribed to should behave
 	// the same way, not error.
@@ -46,7 +46,7 @@ func TestPublishToTopicWithNoSubscribers(t *testing.T) {
 }
 
 func TestPatternMatching(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 
 	ch, err := pb.Subscribe("sub-1", "events.orders", "^events\\.")
 	if err != nil {
@@ -66,7 +66,7 @@ func TestPatternMatching(t *testing.T) {
 }
 
 func TestUnsubscribe(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 
 	pb.Subscribe("sub-1", "news", "")
 	if err := pb.Unsubscribe("sub-1", "news"); err != nil {
@@ -80,7 +80,7 @@ func TestUnsubscribe(t *testing.T) {
 }
 
 func TestMessageHistory(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	pb.Subscribe("sub-1", "news", "")
 
 	for i := 0; i < 5; i++ {
@@ -94,7 +94,7 @@ func TestMessageHistory(t *testing.T) {
 }
 
 func TestDeadLetterQueueOnFullChannel(t *testing.T) {
-	pb := NewPubSubBroker(10)
+	pb := NewPubSubBroker(10, "node-1")
 	pb.Subscribe("slow-sub", "news", "")
 	// Don't drain the channel; fill it past its buffer (100) to force DLQ.
 	for i := 0; i < 105; i++ {
@@ -108,7 +108,7 @@ func TestDeadLetterQueueOnFullChannel(t *testing.T) {
 }
 
 func TestPollReturnsAvailableMessagesWithoutWaitingForLimit(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	pb.Subscribe("sub-1", "news", "")
 	pb.Publish("news", "pub", []byte("msg-1"))
 
@@ -128,7 +128,7 @@ func TestPollReturnsAvailableMessagesWithoutWaitingForLimit(t *testing.T) {
 }
 
 func TestPollTimesOutWithNoMessages(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	pb.Subscribe("sub-1", "news", "")
 
 	start := time.Now()
@@ -147,7 +147,7 @@ func TestPollTimesOutWithNoMessages(t *testing.T) {
 }
 
 func TestPollUnknownSubscriber(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	_, err := pb.Poll("ghost", 10, 100*time.Millisecond)
 	if err == nil {
 		t.Error("expected error for unknown subscriber")
@@ -155,7 +155,7 @@ func TestPollUnknownSubscriber(t *testing.T) {
 }
 
 func TestGetStats(t *testing.T) {
-	pb := NewPubSubBroker(100)
+	pb := NewPubSubBroker(100, "node-1")
 	pb.Subscribe("sub-1", "news", "")
 	pb.Publish("news", "pub", []byte("msg"))
 
@@ -165,5 +165,77 @@ func TestGetStats(t *testing.T) {
 	}
 	if stats["subscriber_count"] != 1 {
 		t.Errorf("expected 1 subscriber, got %v", stats["subscriber_count"])
+	}
+}
+
+// TestMergeSnapshotUnionsPeerMessagesByID is the regression test for
+// pub/sub gossip replication: MergeSnapshot must union a peer's message
+// history into a topic's own history by Message.ID, not duplicate messages
+// already present, and keep the result chronologically ordered so
+// GetMessageHistory's "last N" slice is still correct.
+func TestMergeSnapshotUnionsPeerMessagesByID(t *testing.T) {
+	pb := NewPubSubBroker(100, "node-1")
+	pb.Publish("news", "local-pub", []byte("local message"))
+
+	local := pb.GetMessageHistory("news", 10)
+	if len(local) != 1 {
+		t.Fatalf("expected 1 local message before merge, got %d", len(local))
+	}
+
+	peerMsg := Message{
+		Topic:     "news",
+		Payload:   []byte("peer message"),
+		Timestamp: local[0].Timestamp + 1000,
+		Publisher: "peer-pub",
+		ID:        "news-1234567890-node-2",
+	}
+	pb.MergeSnapshot(map[string][]Message{"news": {peerMsg, peerMsg}}) // duplicate peer entry too
+
+	history := pb.GetMessageHistory("news", 10)
+	if len(history) != 2 {
+		t.Fatalf("expected 2 messages after merge (dedup by ID), got %d: %+v", len(history), history)
+	}
+	if history[0].Publisher != "local-pub" || history[1].Publisher != "peer-pub" {
+		t.Fatalf("expected messages ordered by timestamp (local then peer), got %+v", history)
+	}
+
+	// Merging the exact same snapshot again must be idempotent -- no
+	// duplicate entries from re-processing an already-seen message ID.
+	pb.MergeSnapshot(map[string][]Message{"news": {peerMsg}})
+	history = pb.GetMessageHistory("news", 10)
+	if len(history) != 2 {
+		t.Fatalf("expected merge to be idempotent, got %d messages: %+v", len(history), history)
+	}
+}
+
+// TestMergeSnapshotCreatesUnknownTopic verifies a topic that only exists on
+// a peer (nobody has published to it locally) is created by MergeSnapshot
+// so its history becomes visible via GetTopics/GetMessageHistory.
+func TestMergeSnapshotCreatesUnknownTopic(t *testing.T) {
+	pb := NewPubSubBroker(100, "node-1")
+
+	peerMsg := Message{
+		Topic:     "peer-only-topic",
+		Payload:   []byte("from node-2"),
+		Timestamp: time.Now().UnixMilli(),
+		Publisher: "peer-pub",
+		ID:        "peer-only-topic-1-node-2",
+	}
+	pb.MergeSnapshot(map[string][]Message{"peer-only-topic": {peerMsg}})
+
+	topics := pb.GetTopics()
+	found := false
+	for _, name := range topics {
+		if name == "peer-only-topic" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("expected peer-only-topic to be created by merge, got topics: %v", topics)
+	}
+
+	history := pb.GetMessageHistory("peer-only-topic", 10)
+	if len(history) != 1 || history[0].ID != peerMsg.ID {
+		t.Fatalf("expected the peer's message in history, got %+v", history)
 	}
 }

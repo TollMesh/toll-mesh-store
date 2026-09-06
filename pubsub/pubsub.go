@@ -3,6 +3,7 @@ package pubsub
 import (
 	"fmt"
 	"regexp"
+	"sort"
 	"sync"
 	"time"
 )
@@ -41,15 +42,17 @@ type PubSubBroker struct {
 	subscribers     map[string]*Subscriber
 	deadLetterQueue []Message
 	maxDLQSize      int
+	nodeID          string // stamped into every published message's ID, for gossip global-uniqueness
 }
 
 // NewPubSubBroker creates a new pub/sub broker
-func NewPubSubBroker(maxDLQSize int) *PubSubBroker {
+func NewPubSubBroker(maxDLQSize int, nodeID string) *PubSubBroker {
 	return &PubSubBroker{
 		topics:          make(map[string]*Topic),
 		subscribers:     make(map[string]*Subscriber),
 		deadLetterQueue: make([]Message, 0, maxDLQSize),
 		maxDLQSize:      maxDLQSize,
+		nodeID:          nodeID,
 	}
 }
 
@@ -141,7 +144,16 @@ func (pb *PubSubBroker) Publish(topic, publisher string, payload []byte) (int, e
 		Payload:   payload,
 		Timestamp: time.Now().UnixMilli(),
 		Publisher: publisher,
-		ID:        fmt.Sprintf("%s-%d", topic, time.Now().UnixNano()),
+		// Node is folded into the ID (not just a separate field) because,
+		// unlike Job or Document, Message has no per-entry LWW-register --
+		// history is a set union keyed by ID, the same shape as Stream
+		// entries, so ID uniqueness across nodes is what merge correctness
+		// depends on. A plain "topic-nanotime" ID (the previous scheme) can
+		// collide across two different node processes publishing to the
+		// same topic in the same nanosecond, silently dropping one message
+		// from a union-merge -- the exact bug already found and fixed for
+		// Stream entry IDs earlier in this project.
+		ID: fmt.Sprintf("%s-%d-%s", topic, time.Now().UnixNano(), pb.nodeID),
 	}
 
 	t.mu.Lock()
@@ -294,6 +306,84 @@ func (pb *PubSubBroker) addToDeadLetterQueue(msg Message) {
 	pb.deadLetterQueue = append(pb.deadLetterQueue, msg)
 	if len(pb.deadLetterQueue) > pb.maxDLQSize {
 		pb.deadLetterQueue = pb.deadLetterQueue[1:]
+	}
+}
+
+// Snapshot returns each topic's current message history, for gossip
+// replication. Subscribers and the dead-letter queue are not included --
+// see MergeSnapshot's doc comment for what does and doesn't replicate.
+func (pb *PubSubBroker) Snapshot() map[string][]Message {
+	pb.mu.RLock()
+	topics := make(map[string]*Topic, len(pb.topics))
+	for name, t := range pb.topics {
+		topics[name] = t
+	}
+	pb.mu.RUnlock()
+
+	out := make(map[string][]Message, len(topics))
+	for name, t := range topics {
+		t.mu.RLock()
+		msgs := make([]Message, len(t.messages))
+		copy(msgs, t.messages)
+		t.mu.RUnlock()
+		out[name] = msgs
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: each topic's message
+// history is a set union keyed by Message.ID (messages are immutable once
+// published, like Stream entries, so there's no per-message conflict to
+// resolve, only "have I seen this ID"), re-sorted by Timestamp and trimmed
+// to maxHistory (oldest evicted first), since gossip can deliver messages
+// out of chronological order.
+//
+// Known limitation: this converges GetMessageHistory/GetTopics/GetStats
+// across nodes, but does NOT deliver merged messages to live Subscriber
+// channels on this node. A Subscriber's Channel is in-process memory --
+// nothing about it can cross a gossip round -- so, independent of gossip
+// entirely, Subscribe and Poll for a given subscriber ID must land on the
+// same node; that was already true before this change and gossip does not
+// alter it. What gossip adds is that a message published on any node
+// eventually shows up in every node's history/stats view, rather than only
+// the node it was published on.
+func (pb *PubSubBroker) MergeSnapshot(topicMessages map[string][]Message) {
+	for name, peerMsgs := range topicMessages {
+		if len(peerMsgs) == 0 {
+			continue
+		}
+
+		pb.mu.Lock()
+		t, exists := pb.topics[name]
+		if !exists {
+			t = &Topic{
+				name:        name,
+				subscribers: make(map[string]*Subscriber),
+				messages:    make([]Message, 0, 100),
+				maxHistory:  100,
+			}
+			pb.topics[name] = t
+		}
+		pb.mu.Unlock()
+
+		t.mu.Lock()
+		seen := make(map[string]bool, len(t.messages))
+		for _, m := range t.messages {
+			seen[m.ID] = true
+		}
+		for _, m := range peerMsgs {
+			if !seen[m.ID] {
+				t.messages = append(t.messages, m)
+				seen[m.ID] = true
+			}
+		}
+		sort.Slice(t.messages, func(i, j int) bool {
+			return t.messages[i].Timestamp < t.messages[j].Timestamp
+		})
+		if len(t.messages) > t.maxHistory {
+			t.messages = t.messages[len(t.messages)-t.maxHistory:]
+		}
+		t.mu.Unlock()
 	}
 }
 

@@ -205,4 +205,16 @@ type MeshStoreState struct {
 	// across the cluster rather than exactly-once (see JobQueue.
 	// MergeSnapshot's doc comment).
 	JobQueues map[string][]queue.Job
+
+	// PubSubMessages holds every topic's current message history (via
+	// pubsub.PubSubBroker.Snapshot), keyed by topic name. Merging
+	// (MergeSnapshot) is a set union keyed by Message.ID, the same pattern
+	// as Streams -- messages are immutable once published, so there's no
+	// per-message conflict, only "have I seen this ID". Known limitation:
+	// this converges message *history* (GetMessageHistory/GetTopics/
+	// GetStats) across nodes, but does not deliver merged messages to live
+	// Subscriber channels -- Subscribe/Poll for a given subscriber ID must
+	// land on the same node, independent of gossip (see MergeSnapshot's
+	// doc comment).
+	PubSubMessages map[string][]pubsub.Message
 }

@@ -733,6 +733,105 @@ func TestGossipReplicatesRankingConfigs(t *testing.T) {
 	}
 }
 
+// TestGossipPushDeliversJobClaimFasterThanPeriodicPull is the regression
+// test for the bounded Job Queue race-window mitigation: with a
+// deliberately long syncInterval (so periodic pull-gossip alone would not
+// have fired within the test's deadline), claiming a job on node1 must
+// still become visible on node2 quickly, because ClaimJob triggers an
+// out-of-band push (see MeshStore.triggerGossipPush and
+// GossipCoordinator.PushState) independent of the periodic pull loop.
+func TestGossipPushDeliversJobClaimFasterThanPeriodicPull(t *testing.T) {
+	const longSyncInterval = 10 * time.Second // long enough that periodic pull won't fire during this test
+	node1 := newGossipTestNode(t, "node-1", longSyncInterval)
+	node2 := newGossipTestNode(t, "node-2", longSyncInterval)
+	node1.peerWith(t, node2)
+
+	node1.store.SetGossipPusher(node1.coordinator.PushState)
+	node2.store.SetGossipPusher(node2.coordinator.PushState)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	job, err := node1.store.Enqueue(ctx, "push-queue", []byte("payload"), 5, 3, time.Hour)
+	if err != nil {
+		t.Fatalf("node1 Enqueue failed: %v", err)
+	}
+	// Let the enqueue's own push (or, absent that, sheer luck) settle
+	// before claiming, so the assertion below is specifically about the
+	// claim's push, not a race with the enqueue's.
+	time.Sleep(300 * time.Millisecond)
+
+	if _, err := node1.store.ClaimJob(ctx, "push-queue", "worker-1"); err != nil {
+		t.Fatalf("node1 ClaimJob failed: %v", err)
+	}
+
+	// Must become visible on node2 in well under longSyncInterval --
+	// proving the push delivered it, not periodic pull (which wouldn't
+	// have fired yet at all within this deadline).
+	deadline := time.Now().Add(3 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := node2.store.GetJobStatus(ctx, "push-queue", job.ID)
+		if err == nil && status.Status == "processing" && status.ProcessedBy == "worker-1" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 GetJobStatus(%s) = %+v, err=%v, want processing by worker-1", job.ID, status, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("job claim did not reach node2 via push within 3s (syncInterval is %s, so periodic pull could not explain a success here): %v", longSyncInterval, lastErr)
+	}
+}
+
+// TestGossipPushDeliversTransactionCommitFasterThanPeriodicPull mirrors
+// the job-claim push test for the other documented race window this
+// mitigates: a transaction's committed status.
+func TestGossipPushDeliversTransactionCommitFasterThanPeriodicPull(t *testing.T) {
+	const longSyncInterval = 10 * time.Second
+	node1 := newGossipTestNode(t, "node-1", longSyncInterval)
+	node2 := newGossipTestNode(t, "node-2", longSyncInterval)
+	node1.peerWith(t, node2)
+
+	node1.store.SetGossipPusher(node1.coordinator.PushState)
+	node2.store.SetGossipPusher(node2.coordinator.PushState)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if _, err := node1.store.BeginTransaction(ctx, "push-txn-1"); err != nil {
+		t.Fatalf("node1 BeginTransaction failed: %v", err)
+	}
+	if err := node1.store.CommitTransaction(ctx, "push-txn-1"); err != nil {
+		t.Fatalf("node1 CommitTransaction failed: %v", err)
+	}
+
+	deadline := time.Now().Add(3 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := node2.store.GetTransactionStatus(ctx, "push-txn-1")
+		if err == nil && status == transactions.StatusCommitted {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 GetTransactionStatus(push-txn-1) = %v, err=%v, want committed", status, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("transaction commit did not reach node2 via push within 3s (syncInterval is %s): %v", longSyncInterval, lastErr)
+	}
+}
+
 func checkConverged(ctx context.Context, node1, node2, node3 *gossipTestNode) error {
 	for _, n := range []*gossipTestNode{node1, node2, node3} {
 		v, exists, err := n.store.Get(ctx, "users", "alice")

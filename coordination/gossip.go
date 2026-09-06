@@ -1,6 +1,8 @@
 package coordination
 
 import (
+	"bytes"
+	"compress/gzip"
 	"context"
 	"crypto/tls"
 	"encoding/json"
@@ -190,11 +192,7 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 		return
 	}
 
-	candidates := peerManager.GetHealthyPeers()
-	if len(candidates) == 0 {
-		candidates = peers
-	}
-	peer := candidates[rand.Intn(len(candidates))]
+	peer := selectPeer(peers, peerManager)
 
 	start := time.Now()
 	url := fmt.Sprintf("%s://%s:%d/internal/state", scheme, peer.Address, peer.Port)
@@ -230,6 +228,92 @@ func (gc *GossipCoordinator) performGossip(ctx context.Context) {
 	gc.mu.Lock()
 	gc.lastSync[peer.ID] = time.Now()
 	gc.mu.Unlock()
+}
+
+// selectPeer picks one candidate from peers, preferring one peerManager
+// currently considers healthy (falling back to any known peer if none are
+// healthy right now, so a total outage doesn't permanently block ever
+// trying again). Shared by performGossip (pull) and PushState (push) so
+// both use the identical peer-selection policy. peers must be non-empty.
+func selectPeer(peers []*core.Node, peerManager *PeerManager) *core.Node {
+	candidates := peerManager.GetHealthyPeers()
+	if len(candidates) == 0 {
+		candidates = peers
+	}
+	return candidates[rand.Intn(len(candidates))]
+}
+
+// PushState proactively sends state to one peer (the same selection
+// policy performGossip's pull uses) via POST /internal/state, instead of
+// waiting for that peer -- or anyone -- to pull it on the next periodic
+// round. This is NOT a replacement for periodic pull-gossip, which
+// remains the steady-state mechanism that eventually reaches every node;
+// it's a narrow, opt-in latency reduction for specific operations whose
+// cross-node visibility already has a documented race-window gap (see
+// MeshStore's job-claim and transaction-commit callers). Reaching only
+// one peer, not all, keeps this at the same bandwidth cost as an ordinary
+// gossip round rather than fanning out to the whole cluster on every
+// call; that peer's own subsequent pulls (and pushes, if it also has
+// something to push) continue propagating it onward the normal way.
+//
+// This does not eliminate the race it's mitigating, only shrinks it: two
+// nodes claiming the same job at nearly the same instant can still both
+// push before either push arrives. It reduces the *typical* window from
+// "up to one gossip interval" (e.g. 5s) to "one HTTP round trip"
+// (milliseconds) -- a real, large reduction in likelihood, not a
+// guarantee.
+func (gc *GossipCoordinator) PushState(ctx context.Context, state *core.MeshStoreState) error {
+	gc.mu.RLock()
+	peers := make([]*core.Node, 0, len(gc.peers))
+	for _, peer := range gc.peers {
+		peers = append(peers, peer)
+	}
+	client := gc.httpClient
+	clusterSecret := gc.clusterSecret
+	peerManager := gc.peerManager
+	scheme := gc.scheme()
+	gc.mu.RUnlock()
+
+	if len(peers) == 0 {
+		return nil
+	}
+	peer := selectPeer(peers, peerManager)
+
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	if err := json.NewEncoder(gz).Encode(state); err != nil {
+		gz.Close()
+		return fmt.Errorf("encoding state to push: %w", err)
+	}
+	if err := gz.Close(); err != nil {
+		return fmt.Errorf("compressing state to push: %w", err)
+	}
+
+	url := fmt.Sprintf("%s://%s:%d/internal/state", scheme, peer.Address, peer.Port)
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, url, &buf)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Content-Encoding", "gzip")
+	if clusterSecret != "" {
+		req.Header.Set("X-Cluster-Secret", clusterSecret)
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		peerManager.RecordFailure(peer.ID)
+		return err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		peerManager.RecordFailure(peer.ID)
+		return fmt.Errorf("push to %s returned status %d", peer.ID, resp.StatusCode)
+	}
+
+	peerManager.RecordSuccess(peer.ID, 0)
+	return nil
 }
 
 // HandleMessage processes an incoming gossip message

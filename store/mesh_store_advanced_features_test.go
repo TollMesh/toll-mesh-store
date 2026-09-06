@@ -2,6 +2,8 @@ package store
 
 import (
 	"context"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -47,6 +49,45 @@ func TestMeshStore_AutoSnapshotLoop_PeriodicallySnapshots(t *testing.T) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	t.Fatal("expected autoSnapshotLoop to have taken at least one snapshot with no explicit CreateSnapshot call")
+}
+
+// TestTriggerGossipPush_DebouncesBurstsAndRateLimits is the regression
+// test for triggerGossipPush's core safety property: a burst of triggers
+// (e.g. many concurrent job claims) must collapse into a small, bounded
+// number of actual pushes, never one push per trigger -- otherwise a
+// high-throughput claim workload would turn this latency optimization
+// into a self-inflicted flood of full-state HTTP requests to a peer.
+func TestTriggerGossipPush_DebouncesBurstsAndRateLimits(t *testing.T) {
+	s := newTestStore(t)
+
+	var pushCount int32
+	s.SetGossipPusher(func(ctx context.Context, state *core.MeshStoreState) error {
+		atomic.AddInt32(&pushCount, 1)
+		return nil
+	})
+
+	const burstSize = 200
+	var wg sync.WaitGroup
+	for i := 0; i < burstSize; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			s.triggerGossipPush()
+		}()
+	}
+	wg.Wait()
+
+	// Give gossipPushLoop time to drain and process.
+	time.Sleep(300 * time.Millisecond)
+
+	count := atomic.LoadInt32(&pushCount)
+	if count == 0 {
+		t.Fatal("expected at least one push to have fired")
+	}
+	if count == burstSize {
+		t.Fatalf("expected debouncing to collapse a %d-trigger burst into far fewer pushes, got %d (one per trigger -- debounce isn't working)", burstSize, count)
+	}
+	t.Logf("%d concurrent triggers collapsed into %d actual pushes", burstSize, count)
 }
 
 func TestMeshStore_PubSub_EndToEnd(t *testing.T) {

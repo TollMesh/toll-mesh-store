@@ -73,6 +73,10 @@ type MeshStore struct {
 	// rateLimiters, since it's the same "small map mutated under the
 	// store's main lock" shape as those.
 	clusterMetrics map[string]map[string]int64
+
+	// gossipPusher, gossipPushCh: see SetGossipPusher's doc comment.
+	gossipPusher func(ctx context.Context, state *core.MeshStoreState) error
+	gossipPushCh chan struct{}
 }
 
 // NewMeshStore creates a new MeshStore instance.
@@ -117,6 +121,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		metricsColl:      metrics.NewMetrics(),
 		clusterMetrics:   make(map[string]map[string]int64),
 		rankingConfigs:   ranking.NewRegistry(),
+		gossipPushCh:     make(chan struct{}, 1),
 	}
 
 	// WASM scripting requires the external TinyGo toolchain, which is a
@@ -138,6 +143,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 	}
 
 	go ms.backgroundCleanup()
+	go ms.gossipPushLoop()
 	go ms.autoSnapshotLoop(defaultSnapshotInterval)
 	return ms, nil
 }
@@ -327,9 +333,18 @@ func (ms *MeshStore) Enqueue(ctx context.Context, queueName string, payload []by
 	})
 }
 
-// ClaimJob claims the next available job from the named queue.
+// ClaimJob claims the next available job from the named queue. On success,
+// triggers an out-of-band gossip push (see triggerGossipPush) so a peer
+// learns about this claim well before the next periodic gossip round --
+// this is the documented Job Queue race window (two nodes can each claim
+// the same job before gossip converges) getting a real, bounded
+// mitigation, not a fix: it shrinks the window, it doesn't close it.
 func (ms *MeshStore) ClaimJob(ctx context.Context, queueName, workerID string) (*queue.Job, error) {
-	return ms.jobManager.ClaimJob(queueName, workerID)
+	job, err := ms.jobManager.ClaimJob(queueName, workerID)
+	if err == nil {
+		ms.triggerGossipPush()
+	}
+	return job, err
 }
 
 // CompleteJob marks a claimed job as completed.
@@ -731,6 +746,15 @@ func (ms *MeshStore) CommitTransaction(ctx context.Context, txnID string) error 
 		// though a plain Set to the same key would have survived it.
 		ms.persistence.LogOperation("set", op.Key, valueStr, op.Namespace, 0, ms.config.NodeName, ts)
 	}
+
+	// Trigger an out-of-band gossip push (see triggerGossipPush) so a peer
+	// learns about this commit well before the next periodic gossip
+	// round -- the same bounded, non-eliminating mitigation ClaimJob uses
+	// for its own documented race window (a client calling
+	// AddTransactionOperation/CommitTransaction against a different node
+	// before this transaction's metadata has propagated). The channel
+	// send is non-blocking and doesn't need ms.mu released first.
+	ms.triggerGossipPush()
 
 	return nil
 }
@@ -1488,6 +1512,62 @@ func (ms *MeshStore) GetClusterMetrics(ctx context.Context) map[string]interface
 	ms.mu.RUnlock()
 
 	return result
+}
+
+// SetGossipPusher registers the function that proactively pushes this
+// node's current state to one peer (see coordination.GossipCoordinator.
+// PushState) -- in practice, main.go wires this to coordinator.PushState.
+// Left nil (the default), triggerGossipPush is simply a no-op, so this is
+// fully optional: a MeshStore used without a coordinator (most unit
+// tests) behaves exactly as before.
+func (ms *MeshStore) SetGossipPusher(pusher func(ctx context.Context, state *core.MeshStoreState) error) {
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	ms.gossipPusher = pusher
+}
+
+// triggerGossipPush requests an out-of-band push of this node's current
+// state to one peer, debounced: any number of triggers while a push is
+// already pending or in flight collapse into a single push, and
+// gossipPushLoop enforces a minimum gap between pushes -- so a burst of
+// job claims or transaction commits can never turn this into an unbounded
+// flood of full-state HTTP requests. Called after operations whose
+// cross-node visibility has a documented race-window gap (Job Queue
+// claims, Transaction commits); see PushState's doc comment for what this
+// does and, just as importantly, does not guarantee.
+func (ms *MeshStore) triggerGossipPush() {
+	select {
+	case ms.gossipPushCh <- struct{}{}:
+	default:
+		// A push is already pending or in flight; this trigger is
+		// redundant with it, so it's fine to drop.
+	}
+}
+
+// gossipPushLoop is triggerGossipPush's consumer: it waits for a trigger,
+// performs one push via the registered gossipPusher, then enforces a
+// minimum gap before it will act on another trigger -- a simple, fixed
+// rate limit that bounds worst-case push load (and therefore peer load)
+// regardless of how frequently triggerGossipPush is called.
+func (ms *MeshStore) gossipPushLoop() {
+	const minGapBetweenPushes = 200 * time.Millisecond
+
+	for {
+		select {
+		case <-ms.stopChan:
+			return
+		case <-ms.gossipPushCh:
+			ms.mu.RLock()
+			pusher := ms.gossipPusher
+			ms.mu.RUnlock()
+			if pusher != nil {
+				if err := pusher(context.Background(), ms.GetState()); err != nil {
+					log.Printf("gossip push failed: %v", err)
+				}
+			}
+			time.Sleep(minGapBetweenPushes)
+		}
+	}
 }
 
 // autoSnapshotLoop periodically calls CreateSnapshot (compacting the WAL,

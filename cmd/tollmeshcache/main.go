@@ -68,6 +68,7 @@ func main() {
 	coordinator := coordination.NewGossipCoordinator(config, 5*time.Second)
 	coordinator.RegisterStateMerger(ms.MergeState)
 	coordinator.SetClusterSecret(clusterSecret)
+	ms.SetGossipPusher(coordinator.PushState)
 
 	// TLS is opt-in and cluster-wide: -tls-ca tells this node to speak
 	// https:// to every peer (gossip, health checks, and this process's

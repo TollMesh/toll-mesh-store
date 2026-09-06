@@ -5,6 +5,7 @@ import (
 	"crypto/subtle"
 	"crypto/tls"
 	"encoding/json"
+	"io"
 	"math"
 	"net/http"
 	"net/http/pprof"
@@ -474,9 +475,15 @@ func (hs *HTTPServer) handlePeerHealth(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, map[string]interface{}{"peers": peerList})
 }
 
-// handleInternalState serves this node's full replicated CRDT state for a
-// peer's gossip round to fetch and merge. Not part of the SDK-facing API
-// -- see MeshStore.GetState.
+// handleInternalState is gossip's transport, both directions. GET serves
+// this node's full replicated CRDT state for a peer's periodic gossip
+// round to pull and merge (see MeshStore.GetState) -- the normal,
+// steady-state path. POST accepts a peer proactively pushing its state
+// to us instead (see GossipCoordinator.PushState), used only for a
+// specific, narrow purpose: shrinking the race window on operations
+// whose cross-node visibility already has a documented gap (Job Queue
+// claims, Transaction commits) from "up to one gossip interval" down to
+// one request's round trip. Not part of the SDK-facing API.
 //
 // This is a full-state transfer every round (not a delta/diff), which is
 // the real scalability ceiling on gossip as data volume grows -- fixing
@@ -495,22 +502,48 @@ func (hs *HTTPServer) handlePeerHealth(w http.ResponseWriter, r *http.Request) {
 // how much actually changed, this reduction applies to essentially all
 // gossip traffic, not just a cold-start case.
 func (hs *HTTPServer) handleInternalState(w http.ResponseWriter, r *http.Request) {
-	if r.Method != http.MethodGet {
+	switch r.Method {
+	case http.MethodGet:
+		w.Header().Set("Content-Type", "application/json")
+
+		if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Set("Content-Encoding", "gzip")
+			gz := gzip.NewWriter(w)
+			defer gz.Close()
+			json.NewEncoder(gz).Encode(hs.store.GetState())
+			return
+		}
+
+		json.NewEncoder(w).Encode(hs.store.GetState())
+
+	case http.MethodPost:
+		// A peer is proactively pushing its current state to us, rather
+		// than us pulling from it -- see GossipCoordinator.PushState's
+		// doc comment for why this exists (shrinking specific, documented
+		// race windows for Job Queue claims and Transaction commits from
+		// "up to one gossip interval" down to one request's round trip).
+		body := io.Reader(r.Body)
+		if r.Header.Get("Content-Encoding") == "gzip" {
+			gz, err := gzip.NewReader(r.Body)
+			if err != nil {
+				http.Error(w, "invalid gzip body", http.StatusBadRequest)
+				return
+			}
+			defer gz.Close()
+			body = gz
+		}
+
+		var state core.MeshStoreState
+		if err := json.NewDecoder(body).Decode(&state); err != nil {
+			http.Error(w, "invalid request body", http.StatusBadRequest)
+			return
+		}
+		hs.store.MergeState(&state)
+		writeJSON(w, http.StatusOK, map[string]bool{"ok": true})
+
+	default:
 		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
 	}
-
-	w.Header().Set("Content-Type", "application/json")
-
-	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-		w.Header().Set("Content-Encoding", "gzip")
-		gz := gzip.NewWriter(w)
-		defer gz.Close()
-		json.NewEncoder(gz).Encode(hs.store.GetState())
-		return
-	}
-
-	json.NewEncoder(w).Encode(hs.store.GetState())
 }
 
 // PeerJoinRequest is how a node announces itself to another node's cluster.

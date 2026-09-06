@@ -102,14 +102,49 @@ func TestAPIKeyAuth(t *testing.T) {
 	}
 	checkOpen("/livez")
 	checkOpen("/readyz")
+}
 
-	// /debug/pprof/* is sensitive (heap/goroutine dumps, CPU profiles can
-	// reveal data shapes and in-flight request contents) and must require
-	// the API key like any other SDK-facing endpoint -- not stay open the
-	// way /health/livez/readyz deliberately do.
-	checkProtected("/debug/pprof/", "", http.StatusUnauthorized)
-	checkProtected("/debug/pprof/", "wrong-key", http.StatusUnauthorized)
-	checkProtected("/debug/pprof/", "secret-key", http.StatusOK)
+// TestClusterSecretGatesPprofAndPeerHealth is the regression test for a
+// security-review finding: /debug/pprof/* and /peers/health must require
+// the *cluster secret*, not just the API key, even though neither lives
+// under /internal/. pprof's /debug/pprof/cmdline returns this process's
+// raw command-line arguments -- including -cluster-secret verbatim if an
+// operator passed it as a flag rather than the recommended env var, which
+// previously required local process-list (ps) access to see and would
+// otherwise become reachable over the network to any API-key holder, a
+// materially weaker and more widely distributed credential than the
+// cluster secret. /peers/health similarly discloses reachability/timing
+// for hosts a cluster-secret holder chose to add as peers.
+func TestClusterSecretGatesPprofAndPeerHealth(t *testing.T) {
+	server := newAuthTestServer(t, "api-secret-key", "cluster-secret-key")
+
+	checkTier := func(path string, apiKey, clusterSecret string, wantCode int) {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, server.URL+path, nil)
+		if apiKey != "" {
+			req.Header.Set("X-API-Key", apiKey)
+		}
+		if clusterSecret != "" {
+			req.Header.Set("X-Cluster-Secret", clusterSecret)
+		}
+		resp, err := http.DefaultClient.Do(req)
+		if err != nil {
+			t.Fatalf("request to %s failed: %v", path, err)
+		}
+		resp.Body.Close()
+		if resp.StatusCode != wantCode {
+			t.Errorf("%s with api-key=%q cluster-secret=%q = %d, want %d", path, apiKey, clusterSecret, resp.StatusCode, wantCode)
+		}
+	}
+
+	for _, path := range []string{"/debug/pprof/", "/peers/health"} {
+		checkTier(path, "", "", http.StatusUnauthorized)
+		// The correct API key alone must NOT be sufficient -- this is
+		// exactly the gap the finding identified.
+		checkTier(path, "api-secret-key", "", http.StatusUnauthorized)
+		checkTier(path, "", "wrong-cluster-secret", http.StatusUnauthorized)
+		checkTier(path, "", "cluster-secret-key", http.StatusOK)
+	}
 }
 
 // TestNoAuthWhenNotConfigured confirms the zero-config default (apiKey ==

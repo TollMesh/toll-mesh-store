@@ -231,7 +231,23 @@ func (hs *HTTPServer) authMiddleware(next http.Handler) http.Handler {
 		// since 401 wasn't even a defined enum member). writeJSON matches
 		// the {"code", "message"} shape every SDK's error handling already
 		// expects from every other endpoint.
-		if strings.HasPrefix(r.URL.Path, "/internal/") {
+		// /debug/pprof/* and /peers/health require the cluster secret,
+		// not just the (more widely distributed, SDK-facing) API key,
+		// even though neither lives under /internal/ -- a security
+		// review found both leak more than an ordinary SDK-facing
+		// endpoint should to that weaker credential: pprof's
+		// /debug/pprof/cmdline returns this process's raw os.Args,
+		// which includes -cluster-secret verbatim if an operator
+		// passed it as a flag rather than the recommended env var
+		// (previously that required local process-list/ps access;
+		// pprof made it reachable over the network with just an API
+		// key), and /peers/health discloses reachability/timing for
+		// hosts a cluster-secret holder chose to add as peers to
+		// whoever holds only the weaker API key.
+		requiresClusterTier := strings.HasPrefix(r.URL.Path, "/internal/") ||
+			strings.HasPrefix(r.URL.Path, "/debug/pprof") ||
+			r.URL.Path == "/peers/health"
+		if requiresClusterTier {
 			if hs.clusterSecret != "" && !constantTimeEqual(r.Header.Get("X-Cluster-Secret"), hs.clusterSecret) {
 				writeJSON(w, http.StatusUnauthorized, map[string]interface{}{"code": http.StatusUnauthorized, "message": "invalid or missing cluster secret"})
 				return

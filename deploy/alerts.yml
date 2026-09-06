@@ -1,0 +1,98 @@
+# Example Prometheus alerting rules for a TollMeshCache cluster.
+#
+# Starting point, not a finished policy: thresholds here are reasonable
+# defaults, not tuned against any real traffic pattern or SLO -- adjust
+# `for` durations and thresholds for your actual workload before trusting
+# these to page anyone. See docs/operations.md for what each underlying
+# signal means and how to interpret it during an actual incident.
+#
+# These alerts key off /metrics/prometheus (per-node counters, scraped
+# per deploy/prometheus.yml) and, where noted, on GET /livez and /readyz
+# via Prometheus's blackbox_exporter or an equivalent HTTP-probe exporter
+# -- this repo doesn't ship that exporter config, only the rule
+# definitions assuming a `probe_success` / `probe_http_status_code`-style
+# metric already exists from one.
+
+groups:
+  - name: tollmeshcache
+    rules:
+      # --- Availability, from HTTP probes of /livez and /readyz ---
+      # Requires an HTTP-probe exporter (e.g. blackbox_exporter) scraping
+      # each node's /livez and /readyz and exposing probe_success with a
+      # label identifying which path/node was probed. Adjust the label
+      # matchers to whatever your specific exporter setup produces.
+      - alert: TollMeshCacheNodeNotLive
+        expr: probe_success{endpoint="livez"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "TollMeshCache node {{ $labels.instance }} is not responding to /livez"
+          description: >
+            /livez deliberately does not factor in peer connectivity (see
+            docs/architecture.md) -- a failure here means the process
+            itself is unresponsive or down, not just partitioned. This is
+            the signal that should page someone and potentially trigger a
+            restart.
+
+      - alert: TollMeshCacheNodeNotReady
+        expr: probe_success{endpoint="readyz"} == 0
+        for: 5m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TollMeshCache node {{ $labels.instance }} is isolated from its cluster"
+          description: >
+            /readyz returns 503 when a node with configured peers has
+            zero currently-healthy peers (see
+            docs/operations.md#interpreting-health-signals). The node is
+            likely still serving local reads/writes correctly, but its
+            view of the cluster may be stale and its own writes aren't
+            propagating. Do NOT restart on this alone -- restarting a
+            partitioned node doesn't fix a partition and can make a
+            partial outage worse. Investigate connectivity first.
+
+      # --- Correctness / error-rate signals from real counters ---
+      - alert: TollMeshCacheHighConsumeDenialRate
+        expr: rate(toll_mesh_store_consume_denied[5m]) / rate(toll_mesh_store_consume_total[5m]) > 0.5
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Over half of rate-limit checks on {{ $labels.instance }} are being denied"
+          description: >
+            Could be a legitimate traffic spike hitting configured
+            limits, or a misconfigured limit. Correlate with actual
+            request volume before treating this as an incident.
+
+      - alert: TollMeshCacheGossipErrorsPresent
+        expr: increase(toll_mesh_store_gossip_errors[15m]) > 0
+        for: 0m
+        labels:
+          severity: warning
+        annotations:
+          summary: "TollMeshCache node {{ $labels.instance }} recorded gossip errors"
+          description: >
+            Gossip errors are recorded but this project's own gossip
+            round already retries via the next scheduled round -- a low,
+            occasional rate is not necessarily an incident. Sustained or
+            climbing counts alongside a /readyz failure are the
+            combination worth investigating.
+
+      # --- Resource/capacity signals ---
+      - alert: TollMeshCacheHighConsumeLatency
+        expr: toll_mesh_store_consume_latency_p99 > 50000 # microseconds; 50ms
+        for: 10m
+        labels:
+          severity: warning
+        annotations:
+          summary: "p99 /consume latency on {{ $labels.instance }} exceeds 50ms"
+          description: >
+            The load-testing work in this project (see
+            docs/vs-redis.md#performance) measured /consume at low tens
+            of microseconds under normal concurrent load and low hundreds
+            under a 10-minute sustained-load test; a p99 this high
+            usually means either genuine overload or a regression (the
+            Job Queue O(n^2) bug found by load testing looked exactly
+            like this before it was fixed -- check /debug/pprof/profile,
+            cluster-secret gated, before assuming it's just load).

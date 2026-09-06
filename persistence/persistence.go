@@ -8,6 +8,14 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/toll-mesh/store/pubsub"
+	"github.com/toll-mesh/store/queue"
+	"github.com/toll-mesh/store/scripting"
+	"github.com/toll-mesh/store/search"
+	"github.com/toll-mesh/store/sortedset"
+	"github.com/toll-mesh/store/stream"
+	"github.com/toll-mesh/store/transactions"
 )
 
 // PersistenceEngine handles disk-based persistence with WAL and snapshots
@@ -33,6 +41,36 @@ type Snapshot struct {
 	// lose the version info a later cache merge needs.
 	CacheTimestamp map[string]map[string]int64  `json:"cache_timestamp,omitempty"`
 	CacheNode      map[string]map[string]string `json:"cache_node,omitempty"`
+
+	// The fields below cover the nine feature groups that gained gossip
+	// replication after the original three primitives above -- each one
+	// is exactly what that feature's own Snapshot() method (used for
+	// gossip too) returns, so restoring one just means feeding it back
+	// through that same feature's own MergeSnapshot(), the identical
+	// operation gossip already performs when learning state from a peer,
+	// just sourced from local disk instead of the network. Without these,
+	// a lone node with no peers (or an entire cluster restarting at once,
+	// with no peer left holding the state to re-gossip it) permanently
+	// lost all of Sorted Sets/Streams/Pipelines/Search/Job Queues/Pub-Sub/
+	// Transactions/WASM Scripts/Metrics on every restart, since none of
+	// them were ever WAL-logged either -- this closes that gap for the
+	// snapshot/restore path specifically (WAL logging for these remains
+	// out of scope; only the explicit CreateSnapshot/RestoreFromLatest
+	// path covers them).
+	SortedSets      map[string][]sortedset.SortedSetMember `json:"sorted_sets,omitempty"`
+	Streams         map[string][]stream.StreamEntry        `json:"streams,omitempty"`
+	Pipelines       []scripting.Pipeline                   `json:"pipelines,omitempty"`
+	SearchDocuments []search.Document                      `json:"search_documents,omitempty"`
+	JobQueues       map[string][]queue.Job                 `json:"job_queues,omitempty"`
+	PubSubMessages  map[string][]pubsub.Message            `json:"pubsub_messages,omitempty"`
+	Transactions    []transactions.Transaction             `json:"transactions,omitempty"`
+	// WasmScripts is included so a lone restarted node recovers its
+	// scripts from disk rather than needing a peer -- at the cost of
+	// real recompilation time (the same "real seconds" TinyGo cost
+	// described on scripting.WasmEngine.MergeSnapshot) added to this
+	// node's own startup, once per script, if any were registered.
+	WasmScripts []scripting.CompiledScript  `json:"wasm_scripts,omitempty"`
+	Metrics     map[string]map[string]int64 `json:"metrics,omitempty"`
 }
 
 // WALEntry represents a write-ahead log entry

@@ -270,6 +270,118 @@ func TestMeshStore_ClusterMetrics_MergesPerNodeCountsAsGCounter(t *testing.T) {
 	}
 }
 
+// TestMeshStore_Snapshot_CoversAllNineNewerFeatureGroups is the regression
+// test for the real gap this closes: before this, CreateSnapshot/
+// RestoreFromLatestSnapshot only covered the original three primitives
+// (rate limiting, replay protection, cache), so a lone node with no peers
+// (or an entire cluster restarting at once) silently lost every Sorted
+// Set/Stream/Pipeline/Search document/Job/Pub-Sub message/Transaction/
+// WASM script/Metric on restart, since none of them were ever WAL-logged
+// either. This exercises all nine through a real snapshot-then-restore
+// round trip on a single store (no peers, no gossip involved at all).
+func TestMeshStore_Snapshot_CoversAllNineNewerFeatureGroups(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.ZAdd(ctx, "zset1", "member1", 5); err != nil {
+		t.Fatalf("ZAdd failed: %v", err)
+	}
+	if _, err := s.XAdd(ctx, "stream1", map[string]string{"f": "v"}); err != nil {
+		t.Fatalf("XAdd failed: %v", err)
+	}
+	if err := s.RegisterPipeline(ctx, &scripting.Pipeline{Name: "pipe1", Steps: []scripting.Step{{Op: "get", Args: map[string]interface{}{"namespace": "ns", "key": "k"}}}}); err != nil {
+		t.Fatalf("RegisterPipeline failed: %v", err)
+	}
+	if err := s.IndexDocument(ctx, &search.Document{ID: "doc1", Content: "snapshot restore coverage"}); err != nil {
+		t.Fatalf("IndexDocument failed: %v", err)
+	}
+	job, err := s.Enqueue(ctx, "queue1", []byte("payload"), 5, 3, time.Hour)
+	if err != nil {
+		t.Fatalf("Enqueue failed: %v", err)
+	}
+	if err := s.Subscribe(ctx, "sub1", "topic1", ""); err != nil {
+		t.Fatalf("Subscribe failed: %v", err)
+	}
+	if _, err := s.Publish(ctx, "topic1", "pub1", []byte("hello")); err != nil {
+		t.Fatalf("Publish failed: %v", err)
+	}
+	if _, err := s.BeginTransaction(ctx, "txn1"); err != nil {
+		t.Fatalf("BeginTransaction failed: %v", err)
+	}
+	s.Consume(ctx, "rate-key", 100, time.Minute)
+
+	if err := s.CreateSnapshot(ctx); err != nil {
+		t.Fatalf("create snapshot failed: %v", err)
+	}
+
+	// Simulate a full restart: a fresh store from the same snapshot/WAL
+	// files, but every in-memory engine starts empty.
+	fresh, err := NewMeshStore(s.config)
+	if err != nil {
+		t.Fatalf("failed to reopen store from same data dir: %v", err)
+	}
+	defer fresh.Close()
+
+	if score, exists := fresh.ZScore(ctx, "zset1", "member1"); !exists || score != 5 {
+		t.Errorf("sorted set not restored: exists=%v score=%v", exists, score)
+	}
+	if entries := fresh.XRange(ctx, "stream1", "-", "+", 10); len(entries) != 1 {
+		t.Errorf("stream not restored: %+v", entries)
+	}
+	if _, err := fresh.GetPipeline(ctx, "pipe1"); err != nil {
+		t.Errorf("pipeline not restored: %v", err)
+	}
+	if results := fresh.SearchBM25(ctx, "coverage", 10); len(results) == 0 || results[0].Document.ID != "doc1" {
+		t.Errorf("search document not restored: %+v", results)
+	}
+	if status, err := fresh.GetJobStatus(ctx, "queue1", job.ID); err != nil || status.Status != "pending" {
+		t.Errorf("job not restored: status=%+v err=%v", status, err)
+	}
+	topics := fresh.GetTopics(ctx)
+	if len(topics) != 1 || topics[0] != "topic1" {
+		t.Errorf("pub/sub topic not restored: %+v", topics)
+	}
+	if status, err := fresh.GetTransactionStatus(ctx, "txn1"); err != nil || status != transactions.StatusPending {
+		t.Errorf("transaction not restored: status=%v err=%v", status, err)
+	}
+	cluster := fresh.GetClusterMetrics(ctx)
+	consumeTotal, ok := cluster["consume_total"].(map[string]interface{})
+	if !ok || consumeTotal["total"].(int64) < 1 {
+		t.Errorf("metrics not restored: %+v", cluster["consume_total"])
+	}
+}
+
+// TestMeshStore_StampLocalMetrics_DoesNotRegressRestoredHighWaterMark is
+// the regression test for a real bug found while testing snapshot restore
+// of Metrics: stampLocalMetrics used to unconditionally overwrite this
+// node's own slot in clusterMetrics with its live (in-memory) counter
+// value. A freshly-restarted process's Metrics collector always starts at
+// 0, so the very first GetState/CreateSnapshot/GetClusterMetrics call
+// after restoring a snapshot with a real historical count for this node
+// would regress that count back to 0 -- violating the "a GCounter slot
+// only grows" invariant every peer's merge depends on.
+func TestMeshStore_StampLocalMetrics_DoesNotRegressRestoredHighWaterMark(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	// Simulate a restored snapshot carrying a high-water mark for this
+	// node's own past activity, higher than its brand-new live counter
+	// (which is 0, since nothing has been recorded on s yet).
+	s.mu.Lock()
+	s.clusterMetrics["consume_total"] = map[string]int64{s.config.NodeName: 42}
+	s.mu.Unlock()
+
+	cluster := s.GetClusterMetrics(ctx)
+	consumeTotal := cluster["consume_total"].(map[string]interface{})
+	if consumeTotal["total"].(int64) != 42 {
+		t.Fatalf("restored high-water mark regressed: %+v", consumeTotal)
+	}
+	byNode := consumeTotal["by_node"].(map[string]int64)
+	if byNode[s.config.NodeName] != 42 {
+		t.Fatalf("expected this node's slot to stay at 42, got %v", byNode[s.config.NodeName])
+	}
+}
+
 const echoWasmScript = `
 package main
 

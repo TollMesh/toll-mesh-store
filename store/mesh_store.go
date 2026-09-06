@@ -774,6 +774,12 @@ func (ms *MeshStore) copyCacheLocked() (
 
 // CreateSnapshot captures the current live store state to disk.
 func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
+	// Stamp this node's own current counter values into clusterMetrics
+	// first (see GetState's identical step) -- otherwise a lone node
+	// that has never gossiped (no peers) would snapshot an empty
+	// Metrics map even though it has real local activity.
+	ms.stampLocalMetrics()
+
 	ms.mu.RLock()
 	rateLimiters := make(map[string]interface{}, len(ms.rateLimiters))
 	for k, v := range ms.rateLimiters {
@@ -781,7 +787,35 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 	}
 	replayProtection := ms.replayProtection.Snapshot()
 	cacheCopy, cacheTTLCopy, cacheTimestampCopy, cacheNodeCopy := ms.copyCacheLocked()
+
+	clusterMetricsCopy := make(map[string]map[string]int64, len(ms.clusterMetrics))
+	for name, nodeCounts := range ms.clusterMetrics {
+		inner := make(map[string]int64, len(nodeCounts))
+		for node, count := range nodeCounts {
+			inner[node] = count
+		}
+		clusterMetricsCopy[name] = inner
+	}
 	ms.mu.RUnlock()
+
+	ms.zsetsMu.RLock()
+	sortedSets := make(map[string][]sortedset.SortedSetMember, len(ms.zsets))
+	for name, zs := range ms.zsets {
+		sortedSets[name] = zs.Snapshot()
+	}
+	ms.zsetsMu.RUnlock()
+
+	ms.streamsMu.RLock()
+	streams := make(map[string][]stream.StreamEntry, len(ms.streams))
+	for name, s := range ms.streams {
+		streams[name] = s.Snapshot()
+	}
+	ms.streamsMu.RUnlock()
+
+	var wasmScripts []scripting.CompiledScript
+	if ms.wasmEngine != nil {
+		wasmScripts = ms.wasmEngine.Snapshot()
+	}
 
 	snap := &persistence.Snapshot{
 		RateLimiters:     rateLimiters,
@@ -790,6 +824,19 @@ func (ms *MeshStore) CreateSnapshot(ctx context.Context) error {
 		CacheTTL:         cacheTTLCopy,
 		CacheTimestamp:   cacheTimestampCopy,
 		CacheNode:        cacheNodeCopy,
+
+		// See persistence.Snapshot's doc comment: each of these is the
+		// exact same Snapshot() output gossip already uses, just written
+		// to disk instead of sent to a peer.
+		SortedSets:      sortedSets,
+		Streams:         streams,
+		Pipelines:       ms.pipelines.Snapshot(),
+		SearchDocuments: ms.searchEngine.Snapshot(),
+		JobQueues:       ms.jobManager.Snapshot(),
+		PubSubMessages:  ms.pubsubBroker.Snapshot(),
+		Transactions:    ms.txnManager.Snapshot(),
+		WasmScripts:     wasmScripts,
+		Metrics:         clusterMetricsCopy,
 	}
 
 	if err := ms.persistence.CreateSnapshot(snap); err != nil {
@@ -855,6 +902,39 @@ func (ms *MeshStore) applySnapshotLocked(snap *persistence.Snapshot) {
 	ms.replayProtection = core.RestoreGSet(snap.ReplayProtection)
 
 	ms.cache = restoreCacheLocked(snap.Cache, snap.CacheTTL, snap.CacheTimestamp, snap.CacheNode)
+
+	// The nine feature groups below are restored through their own
+	// MergeSnapshot -- the identical operation gossip uses to learn state
+	// from a peer, just fed from this snapshot instead. Since this always
+	// runs against freshly-constructed, empty engines (both callers --
+	// RestoreFromLatestSnapshot and recoverFromDisk -- run this before the
+	// server accepts any traffic), "merge into empty" and "restore" are
+	// exactly equivalent; there's no real merge conflict to resolve.
+	for name, members := range snap.SortedSets {
+		ms.getOrCreateZSet(name).MergeSnapshot(members)
+	}
+
+	for name, entries := range snap.Streams {
+		ms.getOrCreateStream(name).MergeSnapshot(entries)
+	}
+
+	ms.pipelines.MergeSnapshot(snap.Pipelines)
+	ms.searchEngine.MergeSnapshot(snap.SearchDocuments)
+	ms.jobManager.MergeSnapshot(snap.JobQueues)
+	ms.pubsubBroker.MergeSnapshot(snap.PubSubMessages)
+	ms.txnManager.MergeSnapshot(snap.Transactions)
+	if ms.wasmEngine != nil {
+		ms.wasmEngine.MergeSnapshot(snap.WasmScripts)
+	}
+
+	ms.clusterMetrics = make(map[string]map[string]int64, len(snap.Metrics))
+	for name, nodeCounts := range snap.Metrics {
+		inner := make(map[string]int64, len(nodeCounts))
+		for node, count := range nodeCounts {
+			inner[node] = count
+		}
+		ms.clusterMetrics[name] = inner
+	}
 }
 
 // restoreCacheLocked is the inverse of copyCacheLocked: reassembles the
@@ -910,6 +990,32 @@ func (ms *MeshStore) GetPersistenceStats(ctx context.Context) map[string]interfa
 // docs/architecture.md's gossip section for why each of those doesn't
 // fit).
 
+// stampLocalMetrics writes this node's current counter values into
+// clusterMetrics under its own short lock, so callers that separately read
+// clusterMetrics afterward (GetState, CreateSnapshot, GetClusterMetrics)
+// see this node's own latest activity, not just whatever a previous
+// gossip round happened to record for it. Takes the max against whatever
+// is already recorded for this node's own slot, the same grow-only rule
+// MergeState applies to a peer's reported value -- not a blind overwrite.
+// Without this, a node that restarts and restores a snapshot with a real
+// high-water mark for its own past count would immediately regress that
+// slot back to 0 (its brand new, in-memory-only Metrics collector) on the
+// very next GetState/CreateSnapshot/GetClusterMetrics call, corrupting the
+// "counts only grow" invariant every peer's merge already depends on.
+func (ms *MeshStore) stampLocalMetrics() {
+	localMetrics := ms.metricsColl.Snapshot()
+	ms.mu.Lock()
+	defer ms.mu.Unlock()
+	for name, value := range localMetrics {
+		if ms.clusterMetrics[name] == nil {
+			ms.clusterMetrics[name] = make(map[string]int64)
+		}
+		if current, exists := ms.clusterMetrics[name][ms.config.NodeName]; !exists || value > current {
+			ms.clusterMetrics[name][ms.config.NodeName] = value
+		}
+	}
+}
+
 // GetState returns a snapshot of this node's replicated CRDT state, for a
 // peer to merge into its own via MergeState.
 func (ms *MeshStore) GetState() *core.MeshStoreState {
@@ -917,15 +1023,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	// before taking the read lock below -- a short, separate write,
 	// since mu is a plain sync.RWMutex (not reentrant) and the rest of
 	// this method only ever reads.
-	localMetrics := ms.metricsColl.Snapshot()
-	ms.mu.Lock()
-	for name, value := range localMetrics {
-		if ms.clusterMetrics[name] == nil {
-			ms.clusterMetrics[name] = make(map[string]int64)
-		}
-		ms.clusterMetrics[name][ms.config.NodeName] = value
-	}
-	ms.mu.Unlock()
+	ms.stampLocalMetrics()
 
 	ms.mu.RLock()
 	defer ms.mu.RUnlock()
@@ -1334,16 +1432,9 @@ func (ms *MeshStore) GetPrometheusMetrics(ctx context.Context) string {
 // possibly-stale ones for peers. Latency percentiles have no place here --
 // see MeshStoreState.Metrics's doc comment for why they aren't merged.
 func (ms *MeshStore) GetClusterMetrics(ctx context.Context) map[string]interface{} {
-	localMetrics := ms.metricsColl.Snapshot()
+	ms.stampLocalMetrics()
 
-	ms.mu.Lock()
-	for name, value := range localMetrics {
-		if ms.clusterMetrics[name] == nil {
-			ms.clusterMetrics[name] = make(map[string]int64)
-		}
-		ms.clusterMetrics[name][ms.config.NodeName] = value
-	}
-
+	ms.mu.RLock()
 	result := make(map[string]interface{}, len(ms.clusterMetrics))
 	for name, nodeCounts := range ms.clusterMetrics {
 		var total int64
@@ -1357,7 +1448,7 @@ func (ms *MeshStore) GetClusterMetrics(ctx context.Context) map[string]interface
 			"by_node": perNode,
 		}
 	}
-	ms.mu.Unlock()
+	ms.mu.RUnlock()
 
 	return result
 }

@@ -3,9 +3,11 @@ package api
 import (
 	"compress/gzip"
 	"crypto/subtle"
+	"crypto/tls"
 	"encoding/json"
 	"math"
 	"net/http"
+	"net/http/pprof"
 	"strconv"
 	"strings"
 	"time"
@@ -190,6 +192,18 @@ func NewHTTPServer(addr string, store core.Store, coordinator *coordination.Goss
 	hs.mux.HandleFunc("/metrics/prometheus", hs.handlePrometheusMetrics)
 	hs.mux.HandleFunc("/metrics/cluster", hs.handleClusterMetrics)
 
+	// Profiling -- gated by the same X-API-Key as every other SDK-facing
+	// endpoint (authMiddleware applies to anything not explicitly listed
+	// as open), since heap/goroutine dumps and CPU profiles are sensitive
+	// (can reveal data shapes, in-flight request contents via stack
+	// arguments, etc.) and must not be reachable by an unauthenticated
+	// caller the way /health deliberately is.
+	hs.mux.HandleFunc("/debug/pprof/", pprof.Index)
+	hs.mux.HandleFunc("/debug/pprof/cmdline", pprof.Cmdline)
+	hs.mux.HandleFunc("/debug/pprof/profile", pprof.Profile)
+	hs.mux.HandleFunc("/debug/pprof/symbol", pprof.Symbol)
+	hs.mux.HandleFunc("/debug/pprof/trace", pprof.Trace)
+
 	hs.server = &http.Server{
 		Addr:    addr,
 		Handler: hs.authMiddleware(hs.mux),
@@ -255,6 +269,19 @@ func (hs *HTTPServer) Start() error {
 // port.
 func (hs *HTTPServer) StartTLS(certFile, keyFile string) error {
 	return hs.server.ListenAndServeTLS(certFile, keyFile)
+}
+
+// StartTLSWithConfig starts the HTTP server with a caller-provided
+// *tls.Config -- e.g. one with ClientCAs and ClientAuth:
+// tls.RequireAndVerifyClientCert set, for mutual TLS (see
+// cmd/tollmeshcache's handling of -tls-cert/-tls-key/-tls-ca together).
+// tlsConfig.Certificates must already be populated (via
+// tls.LoadX509KeyPair), which is why this passes empty filenames to
+// ListenAndServeTLS -- see its docs: a Server whose TLSConfig already has
+// Certificates set doesn't need cert/key files passed again.
+func (hs *HTTPServer) StartTLSWithConfig(tlsConfig *tls.Config) error {
+	hs.server.TLSConfig = tlsConfig
+	return hs.server.ListenAndServeTLS("", "")
 }
 
 // Stop gracefully shuts down the HTTP server

@@ -78,7 +78,19 @@ func main() {
 	// sets all three on every node, but they're independent flags since
 	// a node could, in principle, terminate TLS itself behind a proxy
 	// that already verified inbound connections.
+	//
+	// When all three are set together, TLS becomes *mutual*: this node's
+	// outgoing gossip/health-check/join requests present its own
+	// certificate (so a peer can verify who's calling it, not just the
+	// other way around), and this node's own server requires and
+	// verifies every incoming connection's client certificate against
+	// the same CA before serving anything -- including /internal/state,
+	// closing the gap where anyone who could merely reach the port (but
+	// hadn't proven they hold a cluster-issued certificate) could still
+	// complete a TLS handshake and fall back on the cluster secret alone.
 	var clientTLSConfig *tls.Config
+	var mtlsCert *tls.Certificate
+	var clientCAPool *x509.CertPool
 	useTLS := *tlsCA != ""
 	if useTLS {
 		caCert, err := os.ReadFile(*tlsCA)
@@ -90,6 +102,17 @@ func main() {
 			log.Fatalf("failed to parse any certificates from -tls-ca %q", *tlsCA)
 		}
 		clientTLSConfig = &tls.Config{RootCAs: pool}
+
+		if *tlsCert != "" && *tlsKey != "" {
+			cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
+			if err != nil {
+				log.Fatalf("failed to load -tls-cert/-tls-key for mutual TLS: %v", err)
+			}
+			clientTLSConfig.Certificates = []tls.Certificate{cert}
+			mtlsCert = &cert
+			clientCAPool = pool
+		}
+
 		coordinator.SetTLSConfig(clientTLSConfig)
 	}
 
@@ -103,15 +126,26 @@ func main() {
 
 	go func() {
 		scheme := "http"
+		mode := ""
 		if *tlsCert != "" && *tlsKey != "" {
 			scheme = "https"
+			if mtlsCert != nil {
+				mode = " (mutual TLS)"
+			}
 		}
-		log.Printf("tollmeshcache node %q listening on %s://%s (gossip on %s:%d)", *nodeName, scheme, *httpAddr, *bindAddr, *bindPort)
+		log.Printf("tollmeshcache node %q listening on %s://%s%s (gossip on %s:%d)", *nodeName, scheme, *httpAddr, mode, *bindAddr, *bindPort)
 
 		var err error
-		if scheme == "https" {
+		switch {
+		case mtlsCert != nil:
+			err = httpServer.StartTLSWithConfig(&tls.Config{
+				Certificates: []tls.Certificate{*mtlsCert},
+				ClientCAs:    clientCAPool,
+				ClientAuth:   tls.RequireAndVerifyClientCert,
+			})
+		case scheme == "https":
 			err = httpServer.StartTLS(*tlsCert, *tlsKey)
-		} else {
+		default:
 			err = httpServer.Start()
 		}
 		if err != nil {

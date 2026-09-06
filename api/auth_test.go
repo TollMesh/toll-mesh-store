@@ -102,6 +102,14 @@ func TestAPIKeyAuth(t *testing.T) {
 	}
 	checkOpen("/livez")
 	checkOpen("/readyz")
+
+	// /debug/pprof/* is sensitive (heap/goroutine dumps, CPU profiles can
+	// reveal data shapes and in-flight request contents) and must require
+	// the API key like any other SDK-facing endpoint -- not stay open the
+	// way /health/livez/readyz deliberately do.
+	checkProtected("/debug/pprof/", "", http.StatusUnauthorized)
+	checkProtected("/debug/pprof/", "wrong-key", http.StatusUnauthorized)
+	checkProtected("/debug/pprof/", "secret-key", http.StatusOK)
 }
 
 // TestNoAuthWhenNotConfigured confirms the zero-config default (apiKey ==

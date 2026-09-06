@@ -3,6 +3,7 @@ package store
 import (
 	"context"
 	"fmt"
+	"log"
 	"path/filepath"
 	"sync"
 	"time"
@@ -75,6 +76,14 @@ type MeshStore struct {
 }
 
 // NewMeshStore creates a new MeshStore instance.
+// defaultSnapshotInterval is both the interval PersistenceEngine reports
+// via GetPersistenceStats and the interval autoSnapshotLoop actually
+// fires on -- kept as one constant since a mismatch between "what the
+// stats say" and "what actually happens" is exactly the bug this session
+// found (the interval used to be stored and reported but never enforced
+// by anything).
+const defaultSnapshotInterval = 5 * time.Minute
+
 func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 	dataDir := config.DataDir
 	if dataDir == "" {
@@ -84,7 +93,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 	pe, err := persistence.NewPersistenceEngine(
 		filepath.Join(dataDir, "wal"),
 		filepath.Join(dataDir, "snapshots"),
-		5*time.Minute,
+		defaultSnapshotInterval,
 	)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create persistence engine: %w", err)
@@ -129,6 +138,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 	}
 
 	go ms.backgroundCleanup()
+	go ms.autoSnapshotLoop(defaultSnapshotInterval)
 	return ms, nil
 }
 
@@ -1478,6 +1488,32 @@ func (ms *MeshStore) GetClusterMetrics(ctx context.Context) map[string]interface
 	ms.mu.RUnlock()
 
 	return result
+}
+
+// autoSnapshotLoop periodically calls CreateSnapshot (compacting the WAL,
+// exactly like an explicit create_snapshot API call would), on the same
+// schedule PersistenceEngine's snapshotInterval configures. A sustained
+// load test found a real bug this closes: snapshotInterval was stored and
+// even reported via GetPersistenceStats, but nothing ever actually
+// triggered a periodic snapshot -- only an explicit CreateSnapshot call
+// ever compacted the WAL, so a long-running process under continuous
+// write traffic grew its WAL file without bound for its entire lifetime
+// (confirmed live: ~213MB after a 10-minute, ~2.3M-request sustained
+// load test with no snapshot ever taken).
+func (ms *MeshStore) autoSnapshotLoop(interval time.Duration) {
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ms.stopChan:
+			return
+		case <-ticker.C:
+			if err := ms.CreateSnapshot(context.Background()); err != nil {
+				log.Printf("auto-snapshot failed: %v", err)
+			}
+		}
+	}
 }
 
 // backgroundCleanup removes expired cache entries.

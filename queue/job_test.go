@@ -499,6 +499,72 @@ func TestEnqueueStaysFastWithManyPendingJobs(t *testing.T) {
 	}
 }
 
+// TestCleanupEvictsOldTerminalJobsFromMemory is the regression test for a
+// real bug a sustained-load test found: JobQueue.maxAge (documented since
+// this type's original design as "Clean up old jobs") was stored but
+// never read anywhere, so every job ever created -- including ones
+// completed long ago -- stayed in Jobs/JobIndex for the process's entire
+// lifetime, leaking memory without bound under any real sustained
+// throughput.
+func TestCleanupEvictsOldTerminalJobsFromMemory(t *testing.T) {
+	jm := NewJobManager("node-1")
+	defer jm.Stop()
+
+	q := jm.GetOrCreateQueue("cleanup-queue")
+	q.maxAge = 50 * time.Millisecond // short, so the test doesn't wait long
+
+	completedJob, _ := jm.Enqueue("cleanup-queue", []byte("payload"), DefaultJobOptions())
+	jm.ClaimJob("cleanup-queue", "worker-1")
+	if err := jm.CompleteJob("cleanup-queue", completedJob.ID, []byte("result")); err != nil {
+		t.Fatalf("complete failed: %v", err)
+	}
+
+	// A still-pending job, even one enqueued a while ago, must never be
+	// evicted just because it's old -- only terminal-state jobs age out.
+	stillPendingJob, _ := jm.Enqueue("cleanup-queue", []byte("payload2"), DefaultJobOptions())
+
+	if _, err := jm.GetJobStatus("cleanup-queue", completedJob.ID); err != nil {
+		t.Fatalf("completed job should still be present immediately after completion: %v", err)
+	}
+
+	time.Sleep(100 * time.Millisecond)
+	jm.cleanupExpiredJobs()
+
+	if _, err := jm.GetJobStatus("cleanup-queue", completedJob.ID); err == nil {
+		t.Fatal("expected completed job older than maxAge to be evicted from memory")
+	}
+	if status, err := jm.GetJobStatus("cleanup-queue", stillPendingJob.ID); err != nil || status.Status != StatusPending {
+		t.Fatalf("still-pending job must not be evicted just for being old: status=%+v err=%v", status, err)
+	}
+
+	q.mu.RLock()
+	jobCount := len(q.Jobs)
+	q.mu.RUnlock()
+	if jobCount != 1 {
+		t.Fatalf("expected only the still-pending job to remain in the Jobs log, got %d entries", jobCount)
+	}
+}
+
+// TestCleanupDoesNotEvictRecentlyCompletedJobs verifies a job completed
+// well within maxAge is left alone.
+func TestCleanupDoesNotEvictRecentlyCompletedJobs(t *testing.T) {
+	jm := NewJobManager("node-1")
+	defer jm.Stop()
+
+	q := jm.GetOrCreateQueue("cleanup-queue-2")
+	q.maxAge = time.Hour
+
+	job, _ := jm.Enqueue("cleanup-queue-2", []byte("payload"), DefaultJobOptions())
+	jm.ClaimJob("cleanup-queue-2", "worker-1")
+	jm.CompleteJob("cleanup-queue-2", job.ID, []byte("result"))
+
+	jm.cleanupExpiredJobs()
+
+	if _, err := jm.GetJobStatus("cleanup-queue-2", job.ID); err != nil {
+		t.Fatalf("recently-completed job should not be evicted: %v", err)
+	}
+}
+
 func BenchmarkEnqueue(b *testing.B) {
 	jm := NewJobManager("node-1")
 	defer jm.Stop()

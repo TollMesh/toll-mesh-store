@@ -12,6 +12,43 @@ import (
 	"github.com/toll-mesh/store/transactions"
 )
 
+// TestMeshStore_AutoSnapshotLoop_PeriodicallySnapshots is the regression
+// test for a real bug a sustained-load test found: PersistenceEngine's
+// snapshotInterval was stored and even reported via GetPersistenceStats,
+// but nothing ever actually triggered a periodic snapshot -- the WAL grew
+// without bound for a process's entire lifetime unless something called
+// CreateSnapshot explicitly. This runs the same loop NewMeshStore starts
+// (autoSnapshotLoop) with a short interval directly, rather than waiting
+// for the real 5-minute defaultSnapshotInterval, and confirms a snapshot
+// appears on disk with no explicit CreateSnapshot call anywhere in the
+// test.
+func TestMeshStore_AutoSnapshotLoop_PeriodicallySnapshots(t *testing.T) {
+	s := newTestStore(t)
+	ctx := context.Background()
+
+	if err := s.Set(ctx, "ns", "key1", []byte("value1"), time.Hour); err != nil {
+		t.Fatalf("Set failed: %v", err)
+	}
+
+	go s.autoSnapshotLoop(50 * time.Millisecond)
+
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		snap, err := s.GetLatestSnapshot(ctx)
+		if err != nil {
+			t.Fatalf("GetLatestSnapshot failed: %v", err)
+		}
+		if snap != nil {
+			if string(snap.Cache["ns"]["key1"]) != "value1" {
+				t.Errorf("auto-snapshot missing expected cache value: %+v", snap.Cache)
+			}
+			return
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	t.Fatal("expected autoSnapshotLoop to have taken at least one snapshot with no explicit CreateSnapshot call")
+}
+
 func TestMeshStore_PubSub_EndToEnd(t *testing.T) {
 	s := newTestStore(t)
 	ctx := context.Background()

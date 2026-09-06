@@ -331,6 +331,31 @@ func (jm *JobManager) cleanupExpiredJobs() {
 		q.PendingJobs = newPending
 		q.sortPendingJobs()
 
+		// Evict terminal jobs (Completed/Failed/Cancelled -- never
+		// Pending/Processing, which are handled above and must stay
+		// reachable while active) older than maxAge from the append-only
+		// Jobs log and JobIndex. This field existed since JobQueue's
+		// original design ("maxAge time.Duration // Clean up old jobs")
+		// but nothing ever read it -- a real bug a sustained-load test
+		// surfaced: every job ever created, including long-completed
+		// ones, stayed in memory for the lifetime of the process, so a
+		// server under continuous real traffic leaks memory without
+		// bound purely from job history, independent of whether jobs are
+		// actually being claimed and completed promptly.
+		if q.maxAge > 0 {
+			cutoff := now - q.maxAge.Milliseconds()
+			kept := make([]*Job, 0, len(q.Jobs))
+			for _, job := range q.Jobs {
+				terminal := job.Status == StatusCompleted || job.Status == StatusFailed || job.Status == StatusCancelled
+				if terminal && job.UpdatedAt < cutoff {
+					delete(q.JobIndex, job.ID)
+					continue
+				}
+				kept = append(kept, job)
+			}
+			q.Jobs = kept
+		}
+
 		q.mu.Unlock()
 	}
 }

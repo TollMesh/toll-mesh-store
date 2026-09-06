@@ -89,9 +89,22 @@ func main() {
 	// closing the gap where anyone who could merely reach the port (but
 	// hadn't proven they hold a cluster-issued certificate) could still
 	// complete a TLS handshake and fall back on the cluster secret alone.
+	// certReloader (if TLS is on at all) watches -tls-cert/-tls-key on
+	// disk and hot-reloads them on change, so a real PKI's certificate
+	// rotation takes effect without a process restart -- see
+	// coordination.CertReloader's doc comment.
+	var certReloader *coordination.CertReloader
+	if *tlsCert != "" && *tlsKey != "" {
+		var err error
+		certReloader, err = coordination.NewCertReloader(*tlsCert, *tlsKey)
+		if err != nil {
+			log.Fatalf("failed to load -tls-cert/-tls-key: %v", err)
+		}
+	}
+
 	var clientTLSConfig *tls.Config
-	var mtlsCert *tls.Certificate
 	var clientCAPool *x509.CertPool
+	mutualTLS := false
 	useTLS := *tlsCA != ""
 	if useTLS {
 		caCert, err := os.ReadFile(*tlsCA)
@@ -104,14 +117,10 @@ func main() {
 		}
 		clientTLSConfig = &tls.Config{RootCAs: pool}
 
-		if *tlsCert != "" && *tlsKey != "" {
-			cert, err := tls.LoadX509KeyPair(*tlsCert, *tlsKey)
-			if err != nil {
-				log.Fatalf("failed to load -tls-cert/-tls-key for mutual TLS: %v", err)
-			}
-			clientTLSConfig.Certificates = []tls.Certificate{cert}
-			mtlsCert = &cert
+		if certReloader != nil {
+			clientTLSConfig.GetClientCertificate = certReloader.GetClientCertificate
 			clientCAPool = pool
+			mutualTLS = true
 		}
 
 		coordinator.SetTLSConfig(clientTLSConfig)
@@ -128,9 +137,9 @@ func main() {
 	go func() {
 		scheme := "http"
 		mode := ""
-		if *tlsCert != "" && *tlsKey != "" {
+		if certReloader != nil {
 			scheme = "https"
-			if mtlsCert != nil {
+			if mutualTLS {
 				mode = " (mutual TLS)"
 			}
 		}
@@ -138,14 +147,18 @@ func main() {
 
 		var err error
 		switch {
-		case mtlsCert != nil:
-			err = httpServer.StartTLSWithConfig(&tls.Config{
-				Certificates: []tls.Certificate{*mtlsCert},
-				ClientCAs:    clientCAPool,
-				ClientAuth:   tls.RequireAndVerifyClientCert,
-			})
-		case scheme == "https":
-			err = httpServer.StartTLS(*tlsCert, *tlsKey)
+		case certReloader != nil:
+			// Routed through StartTLSWithConfig (not the simpler
+			// StartTLS) even for server-only TLS, specifically so
+			// GetCertificate picks up certReloader's hot-reload -- the
+			// plain StartTLS/ListenAndServeTLS path loads the cert file
+			// once and never looks at it again.
+			serverTLSConfig := &tls.Config{GetCertificate: certReloader.GetCertificate}
+			if mutualTLS {
+				serverTLSConfig.ClientCAs = clientCAPool
+				serverTLSConfig.ClientAuth = tls.RequireAndVerifyClientCert
+			}
+			err = httpServer.StartTLSWithConfig(serverTLSConfig)
 		default:
 			err = httpServer.Start()
 		}

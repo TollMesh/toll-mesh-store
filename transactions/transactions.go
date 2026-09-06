@@ -45,7 +45,13 @@ type Transaction struct {
 	Created    int64
 	Committed  int64
 	Snapshot   map[string]interface{}
-	mu         sync.RWMutex
+	// UpdatedAt and Node are this transaction's LWW-register version for
+	// gossip replication, alongside Created (which, unlike UpdatedAt, is
+	// stamped once and never changes -- it exists for the timeout-based
+	// cleanup deadline, not versioning).
+	UpdatedAt int64
+	Node      string
+	mu        sync.RWMutex
 }
 
 // TransactionManager manages ACID transactions
@@ -54,14 +60,16 @@ type TransactionManager struct {
 	transactions map[string]*Transaction
 	maxTxns      int
 	txnTimeout   time.Duration
+	nodeID       string // stamped onto Transaction.Node on every mutation, for gossip LWW
 }
 
 // NewTransactionManager creates a new transaction manager
-func NewTransactionManager(maxTxns int, txnTimeout time.Duration) *TransactionManager {
+func NewTransactionManager(maxTxns int, txnTimeout time.Duration, nodeID string) *TransactionManager {
 	tm := &TransactionManager{
 		transactions: make(map[string]*Transaction),
 		maxTxns:      maxTxns,
 		txnTimeout:   txnTimeout,
+		nodeID:       nodeID,
 	}
 
 	// Start cleanup goroutine
@@ -83,12 +91,15 @@ func (tm *TransactionManager) BeginTransaction(txnID string) (*Transaction, erro
 		return nil, fmt.Errorf("transaction already exists: %s", txnID)
 	}
 
+	now := time.Now().UnixMilli()
 	txn := &Transaction{
 		ID:         txnID,
 		Status:     StatusPending,
 		Operations: make([]Operation, 0),
-		Created:    time.Now().UnixMilli(),
+		Created:    now,
 		Snapshot:   make(map[string]interface{}),
+		UpdatedAt:  now,
+		Node:       tm.nodeID,
 	}
 
 	tm.transactions[txnID] = txn
@@ -114,6 +125,8 @@ func (tm *TransactionManager) AddOperation(txnID string, op Operation) error {
 
 	op.Timestamp = time.Now().UnixMilli()
 	txn.Operations = append(txn.Operations, op)
+	txn.UpdatedAt = op.Timestamp
+	txn.Node = tm.nodeID
 	return nil
 }
 
@@ -144,6 +157,8 @@ func (tm *TransactionManager) CommitTransaction(txnID string) error {
 
 	txn.Status = StatusCommitted
 	txn.Committed = time.Now().UnixMilli()
+	txn.UpdatedAt = txn.Committed
+	txn.Node = tm.nodeID
 	return nil
 }
 
@@ -165,6 +180,8 @@ func (tm *TransactionManager) RollbackTransaction(txnID string) error {
 	}
 
 	txn.Status = StatusRolledBack
+	txn.UpdatedAt = time.Now().UnixMilli()
+	txn.Node = tm.nodeID
 	return nil
 }
 
@@ -233,6 +250,128 @@ func (tm *TransactionManager) cleanupExpiredTransactions() {
 		}
 		tm.mu.Unlock()
 	}
+}
+
+// Snapshot returns a copy of every transaction (including terminal ones,
+// until cleanup evicts them), for gossip replication. Each Transaction's
+// mutex is never copied -- fields are copied individually into a fresh
+// Transaction value instead of dereferencing the original.
+func (tm *TransactionManager) Snapshot() []Transaction {
+	tm.mu.RLock()
+	txns := make([]*Transaction, 0, len(tm.transactions))
+	for _, t := range tm.transactions {
+		txns = append(txns, t)
+	}
+	tm.mu.RUnlock()
+
+	out := make([]Transaction, 0, len(txns))
+	for _, t := range txns {
+		t.mu.RLock()
+		ops := make([]Operation, len(t.Operations))
+		copy(ops, t.Operations)
+		snap := make(map[string]interface{}, len(t.Snapshot))
+		for k, v := range t.Snapshot {
+			snap[k] = v
+		}
+		out = append(out, Transaction{
+			ID:         t.ID,
+			Status:     t.Status,
+			Operations: ops,
+			Created:    t.Created,
+			Committed:  t.Committed,
+			Snapshot:   snap,
+			UpdatedAt:  t.UpdatedAt,
+			Node:       t.Node,
+		})
+		t.mu.RUnlock()
+	}
+	return out
+}
+
+// MergeSnapshot merges a peer's Snapshot output: a (UpdatedAt, Node)
+// LWW-register comparison per transaction ID, the same pattern as
+// Cache/Pipelines/Search/Job Queues -- a peer's version of a transaction is
+// adopted only when it's strictly newer, and a transaction unknown locally
+// is inserted outright. This does not enforce maxTxns on the inserted
+// side, so a merge can transiently push the local transaction count above
+// it -- the periodic timeout-based cleanup (keyed off the transaction's
+// original, replicated Created timestamp, so it fires at roughly the same
+// wall-clock deadline on every node) brings it back down, it just isn't
+// instantaneous.
+//
+// Known limitation, the same shape as Job Queues: this converges
+// transaction *metadata* (status, queued operations) across nodes, but
+// does not provide cross-node atomicity. A client that calls
+// AddTransactionOperation against one node and then CommitTransaction
+// against a different node (e.g. behind a load balancer) before a gossip
+// round has run will see "transaction not found" on the second node, not
+// a merged view -- callers should route all calls for one transaction ID
+// to the same node, the same constraint Job Queues' claim exclusivity has
+// in the other direction (see JobQueue.MergeSnapshot's doc comment). The
+// *effects* of a committed transaction's Set operations do not depend on
+// this: they're applied directly into MeshStore's cache, which already
+// gossip-replicates via Cache's own LWW-register merge, independent of
+// whether the Transaction object itself has converged yet.
+func (tm *TransactionManager) MergeSnapshot(peerTxns []Transaction) {
+	for i := range peerTxns {
+		peer := &peerTxns[i]
+
+		tm.mu.Lock()
+		local, exists := tm.transactions[peer.ID]
+		if !exists {
+			tm.transactions[peer.ID] = clonePeerTransaction(peer)
+			tm.mu.Unlock()
+			continue
+		}
+		tm.mu.Unlock()
+
+		local.mu.Lock()
+		if !txnLess(local.UpdatedAt, local.Node, peer.UpdatedAt, peer.Node) {
+			local.mu.Unlock()
+			continue
+		}
+		local.Status = peer.Status
+		local.Operations = append([]Operation(nil), peer.Operations...)
+		local.Created = peer.Created
+		local.Committed = peer.Committed
+		snap := make(map[string]interface{}, len(peer.Snapshot))
+		for k, v := range peer.Snapshot {
+			snap[k] = v
+		}
+		local.Snapshot = snap
+		local.UpdatedAt = peer.UpdatedAt
+		local.Node = peer.Node
+		local.mu.Unlock()
+	}
+}
+
+// clonePeerTransaction builds a fresh *Transaction (with its own,
+// never-locked mutex) from a peer's snapshot entry.
+func clonePeerTransaction(peer *Transaction) *Transaction {
+	ops := append([]Operation(nil), peer.Operations...)
+	snap := make(map[string]interface{}, len(peer.Snapshot))
+	for k, v := range peer.Snapshot {
+		snap[k] = v
+	}
+	return &Transaction{
+		ID:         peer.ID,
+		Status:     peer.Status,
+		Operations: ops,
+		Created:    peer.Created,
+		Committed:  peer.Committed,
+		Snapshot:   snap,
+		UpdatedAt:  peer.UpdatedAt,
+		Node:       peer.Node,
+	}
+}
+
+// txnLess reports whether (tsA, nodeA) sorts strictly before (tsB, nodeB)
+// in the transaction LWW-register's version order.
+func txnLess(tsA int64, nodeA string, tsB int64, nodeB string) bool {
+	if tsA != tsB {
+		return tsA < tsB
+	}
+	return nodeA < nodeB
 }
 
 // GetStats returns transaction statistics

@@ -15,6 +15,7 @@ import (
 	"github.com/toll-mesh/store/scripting"
 	"github.com/toll-mesh/store/search"
 	"github.com/toll-mesh/store/store"
+	"github.com/toll-mesh/store/transactions"
 )
 
 // gossipTestNode bundles a real MeshStore, a real GossipCoordinator wired
@@ -527,6 +528,70 @@ func TestGossipReplicatesPubSubMessageHistory(t *testing.T) {
 	}
 	if lastErr != nil {
 		t.Fatalf("pub/sub message history did not converge to node2 within deadline: %v", lastErr)
+	}
+}
+
+// TestGossipReplicatesTransactions verifies a transaction begun and
+// committed on one node becomes visible (status + queued operations) on a
+// peer node after gossip converges. Callers still must not split calls for
+// one transaction ID across nodes faster than gossip converges (see
+// TransactionManager.MergeSnapshot's doc comment) -- this test only
+// exercises the read-side convergence, driving every write from node1.
+func TestGossipReplicatesTransactions(t *testing.T) {
+	const syncInterval = 50 * time.Millisecond
+	node1 := newGossipTestNode(t, "node-1", syncInterval)
+	node2 := newGossipTestNode(t, "node-2", syncInterval)
+	node1.peerWith(t, node2)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, n := range []*gossipTestNode{node1, node2} {
+		if err := n.coordinator.Start(ctx); err != nil {
+			t.Fatalf("%s: coordinator.Start failed: %v", n.name, err)
+		}
+	}
+
+	if _, err := node1.store.BeginTransaction(ctx, "txn-live-1"); err != nil {
+		t.Fatalf("node1 BeginTransaction failed: %v", err)
+	}
+	if err := node1.store.AddTransactionOperation(ctx, "txn-live-1", transactions.Operation{
+		Type: transactions.OpSet, Namespace: "ns", Key: "k", Value: "v",
+	}); err != nil {
+		t.Fatalf("node1 AddTransactionOperation failed: %v", err)
+	}
+	if err := node1.store.CommitTransaction(ctx, "txn-live-1"); err != nil {
+		t.Fatalf("node1 CommitTransaction failed: %v", err)
+	}
+
+	deadline := time.Now().Add(5 * time.Second)
+	var lastErr error
+	for time.Now().Before(deadline) {
+		status, err := node2.store.GetTransactionStatus(ctx, "txn-live-1")
+		if err == nil && status == transactions.StatusCommitted {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 GetTransactionStatus(txn-live-1) = %v, err=%v, want committed", status, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("transaction did not converge to node2 within deadline: %v", lastErr)
+	}
+
+	// The committed transaction's Set effect should also have converged,
+	// via Cache's own (already-existing) gossip replication.
+	deadline = time.Now().Add(5 * time.Second)
+	for time.Now().Before(deadline) {
+		v, exists, err := node2.store.Get(ctx, "ns", "k")
+		if err == nil && exists && string(v) == "v" {
+			lastErr = nil
+			break
+		}
+		lastErr = fmt.Errorf("node2 Get(ns, k) = %q exists=%v err=%v, want \"v\"", v, exists, err)
+		time.Sleep(25 * time.Millisecond)
+	}
+	if lastErr != nil {
+		t.Fatalf("transaction's Set effect did not converge to node2 within deadline: %v", lastErr)
 	}
 }
 

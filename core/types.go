@@ -217,4 +217,19 @@ type MeshStoreState struct {
 	// land on the same node, independent of gossip (see MergeSnapshot's
 	// doc comment).
 	PubSubMessages map[string][]pubsub.Message
+
+	// Transactions holds every transaction (via transactions.
+	// TransactionManager.Snapshot). Merging (MergeSnapshot) is a
+	// (UpdatedAt, Node) LWW-register comparison per transaction ID, the
+	// same pattern as Cache/Pipelines/Search/Job Queues. Known limitation,
+	// the same shape as Job Queues: this converges transaction metadata
+	// (status, queued operations) across nodes but does not provide
+	// cross-node atomicity -- AddTransactionOperation and CommitTransaction
+	// for one transaction ID must land on the same node, or the second
+	// call can fail with "transaction not found" until the next gossip
+	// round (see TransactionManager.MergeSnapshot's doc comment). A
+	// committed transaction's actual Set effects don't depend on this:
+	// they're applied directly into Cache, which already replicates on its
+	// own.
+	Transactions []transactions.Transaction
 }

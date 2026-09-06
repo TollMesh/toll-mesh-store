@@ -92,7 +92,7 @@ func NewMeshStore(config *core.ClusterConfig) (*MeshStore, error) {
 		streams:          make(map[string]*stream.Stream),
 		groups:           make(map[string]*stream.ConsumerGroup),
 		pubsubBroker:     pubsub.NewPubSubBroker(1000, config.NodeName),
-		txnManager:       transactions.NewTransactionManager(1000, 5*time.Minute),
+		txnManager:       transactions.NewTransactionManager(1000, 5*time.Minute, config.NodeName),
 		persistence:      pe,
 		pipelines:        scripting.NewEngine(50, 30*time.Second),
 		searchEngine:     search.NewHybridSearchEngine(),
@@ -697,11 +697,18 @@ func (ms *MeshStore) CommitTransaction(ctx context.Context, txnID string) error 
 		if _, exists := ms.cache[op.Namespace]; !exists {
 			ms.cache[op.Namespace] = make(map[string]*cacheEntry)
 		}
+		ts := time.Now().UnixNano()
 		ms.cache[op.Namespace][op.Key] = &cacheEntry{
 			Value:     []byte(valueStr),
-			Timestamp: time.Now().UnixNano(),
+			Timestamp: ts,
 			Node:      ms.config.NodeName,
 		}
+		// Set() logs every write to the WAL for restart durability; this
+		// transactional path applied the same mutation to ms.cache but,
+		// until now, never called LogOperation, so a committed
+		// transaction's writes were silently lost on the next restart even
+		// though a plain Set to the same key would have survived it.
+		ms.persistence.LogOperation("set", op.Key, valueStr, op.Namespace, 0, ms.config.NodeName, ts)
 	}
 
 	return nil
@@ -926,6 +933,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 	searchDocuments := ms.searchEngine.Snapshot()
 	jobQueues := ms.jobManager.Snapshot()
 	pubsubMessages := ms.pubsubBroker.Snapshot()
+	txns := ms.txnManager.Snapshot()
 
 	return &core.MeshStoreState{
 		RateLimiters:     rateLimiters,
@@ -940,6 +948,7 @@ func (ms *MeshStore) GetState() *core.MeshStoreState {
 		SearchDocuments:  searchDocuments,
 		JobQueues:        jobQueues,
 		PubSubMessages:   pubsubMessages,
+		Transactions:     txns,
 	}
 }
 
@@ -1049,6 +1058,8 @@ func (ms *MeshStore) MergeState(peer *core.MeshStoreState) {
 	ms.jobManager.MergeSnapshot(peer.JobQueues)
 
 	ms.pubsubBroker.MergeSnapshot(peer.PubSubMessages)
+
+	ms.txnManager.MergeSnapshot(peer.Transactions)
 }
 
 // cacheEntryLess reports whether (tsA, nodeA) sorts strictly before (tsB,
